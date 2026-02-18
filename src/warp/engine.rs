@@ -1,13 +1,14 @@
 //! Inverse-mapping warp engine.
 //!
 //! For each output pixel, projects back to source CRS and samples the source array.
-//! No linear approximation — exact projection per pixel for maximum accuracy.
+//! Uses LinearApprox for scanline optimization when available.
 
 use ndarray::{Array2, ArrayView2};
 
 use crate::affine::Affine;
 use crate::error::WarpError;
-use crate::proj::crs::CrsTransform;
+use crate::proj::approx::LinearApprox;
+use crate::proj::pipeline::Pipeline;
 use crate::resample::{self, ResamplingMethod};
 
 /// Reproject a 2D array from source CRS to destination CRS.
@@ -17,15 +18,16 @@ use crate::resample::{self, ResamplingMethod};
 /// * `src_affine` — source geotransform (pixel → source CRS coordinates)
 /// * `dst_affine` — destination geotransform (pixel → destination CRS coordinates)
 /// * `dst_shape` — (rows, cols) of the output array
-/// * `crs_transform` — CRS transform (dst → src direction)
+/// * `pipeline` — CRS transform pipeline (dst → src direction)
 /// * `method` — resampling method
 /// * `nodata` — optional nodata sentinel value
+#[allow(clippy::too_many_arguments)]
 pub fn warp(
     src: &ArrayView2<'_, f64>,
     src_affine: &Affine,
     dst_affine: &Affine,
     dst_shape: (usize, usize),
-    crs_transform: &CrsTransform,
+    pipeline: &Pipeline,
     method: ResamplingMethod,
     nodata: Option<f64>,
 ) -> Result<Array2<f64>, WarpError> {
@@ -35,21 +37,33 @@ pub fn warp(
     let fill = nodata.unwrap_or(f64::NAN);
     let mut dst = Array2::from_elem(dst_shape, fill);
 
+    let approx = LinearApprox::default();
+    let mut src_cols_buf = vec![0.0; dst_cols];
+    let mut src_rows_buf = vec![0.0; dst_cols];
+
     for row in 0..dst_rows {
+        // Use LinearApprox for the scanline
+        let scanline_ok = approx
+            .transform_scanline(
+                pipeline,
+                dst_affine,
+                &src_affine_inv,
+                row,
+                dst_cols,
+                &mut src_cols_buf,
+                &mut src_rows_buf,
+            )
+            .is_ok();
+
+        if !scanline_ok {
+            // If scanline transform fails entirely, leave as nodata
+            continue;
+        }
+
         for col in 0..dst_cols {
-            // Pixel center in destination CRS
-            let (dst_x, dst_y) = dst_affine.forward(col as f64 + 0.5, row as f64 + 0.5);
+            let src_col = src_cols_buf[col];
+            let src_row = src_rows_buf[col];
 
-            // Project to source CRS
-            let (src_x, src_y) = match crs_transform.transform_inv(dst_x, dst_y) {
-                Ok(coords) => coords,
-                Err(_) => continue, // out-of-range projection → leave as nodata
-            };
-
-            // Convert to source pixel coordinates
-            let (src_col, src_row) = src_affine_inv.forward(src_x, src_y);
-
-            // Sample source array
             let val = match method {
                 ResamplingMethod::Nearest => {
                     resample::nearest::sample(src, src_col, src_row, nodata)
@@ -89,14 +103,14 @@ mod tests {
             [13.0, 14.0, 15.0, 16.0],
         ];
         let affine = Affine::new(10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0);
-        let ct = CrsTransform::new("EPSG:32633", "EPSG:32633").unwrap();
+        let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
 
         let result = warp(
             &src.view(),
             &affine,
             &affine,
             (4, 4),
-            &ct,
+            &pipeline,
             ResamplingMethod::Nearest,
             None,
         )
@@ -119,14 +133,14 @@ mod tests {
             [13.0, 14.0, 15.0, 16.0],
         ];
         let affine = Affine::new(10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0);
-        let ct = CrsTransform::new("EPSG:32633", "EPSG:32633").unwrap();
+        let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
 
         let result = warp(
             &src.view(),
             &affine,
             &affine,
             (4, 4),
-            &ct,
+            &pipeline,
             ResamplingMethod::Bilinear,
             None,
         )
@@ -146,14 +160,14 @@ mod tests {
         src[(1, 1)] = f64::NAN;
 
         let affine = Affine::new(10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0);
-        let ct = CrsTransform::new("EPSG:32633", "EPSG:32633").unwrap();
+        let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
 
         let result = warp(
             &src.view(),
             &affine,
             &affine,
             (4, 4),
-            &ct,
+            &pipeline,
             ResamplingMethod::Nearest,
             None,
         )
@@ -170,14 +184,14 @@ mod tests {
     fn test_unsupported_method() {
         let src = array![[1.0]];
         let affine = Affine::new(10.0, 0.0, 500000.0, 0.0, -10.0, 6000010.0);
-        let ct = CrsTransform::new("EPSG:32633", "EPSG:32633").unwrap();
+        let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
 
         let result = warp(
             &src.view(),
             &affine,
             &affine,
             (1, 1),
-            &ct,
+            &pipeline,
             ResamplingMethod::Cubic,
             None,
         );

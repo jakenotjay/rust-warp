@@ -1,6 +1,15 @@
+pub mod albers_equal_area;
+pub mod approx;
 pub mod common;
 pub mod crs;
 pub mod ellipsoid;
+pub mod equirectangular;
+pub mod lambert_conformal;
+pub mod mercator;
+pub mod pipeline;
+pub mod sinusoidal;
+pub mod stereographic;
+pub mod transverse_mercator;
 
 use crate::error::ProjError;
 

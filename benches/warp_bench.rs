@@ -3,10 +3,11 @@ use ndarray::Array2;
 
 use _rust::affine::Affine;
 use _rust::proj::crs::CrsTransform;
+use _rust::proj::pipeline::Pipeline;
 use _rust::resample::ResamplingMethod;
 use _rust::warp::engine;
 
-fn make_test_data(size: usize) -> (Array2<f64>, Affine, Affine, CrsTransform) {
+fn make_test_data(size: usize) -> (Array2<f64>, Affine, Affine, Pipeline) {
     let mut src = Array2::zeros((size, size));
     for row in 0..size {
         for col in 0..size {
@@ -20,15 +21,15 @@ fn make_test_data(size: usize) -> (Array2<f64>, Affine, Affine, CrsTransform) {
     // Approximate 4326 destination covering the same area
     let dst_affine = Affine::new(0.0014, 0.0, 15.0, 0.0, -0.0009, 59.52);
 
-    let ct = CrsTransform::new("EPSG:4326", "EPSG:32633").unwrap();
+    let pipeline = Pipeline::new("EPSG:4326", "EPSG:32633").unwrap();
 
-    (src, src_affine, dst_affine, ct)
+    (src, src_affine, dst_affine, pipeline)
 }
 
 fn bench_warp_nearest(c: &mut Criterion) {
     let sizes = [256, 512, 1024];
     for &size in &sizes {
-        let (src, src_affine, dst_affine, ct) = make_test_data(size);
+        let (src, src_affine, dst_affine, pipeline) = make_test_data(size);
         let dst_shape = (size, size);
 
         c.bench_function(&format!("warp_nearest_{size}x{size}"), |b| {
@@ -38,7 +39,7 @@ fn bench_warp_nearest(c: &mut Criterion) {
                     &src_affine,
                     &dst_affine,
                     dst_shape,
-                    &ct,
+                    &pipeline,
                     ResamplingMethod::Nearest,
                     None,
                 )
@@ -51,7 +52,7 @@ fn bench_warp_nearest(c: &mut Criterion) {
 fn bench_warp_bilinear(c: &mut Criterion) {
     let sizes = [256, 512, 1024];
     for &size in &sizes {
-        let (src, src_affine, dst_affine, ct) = make_test_data(size);
+        let (src, src_affine, dst_affine, pipeline) = make_test_data(size);
         let dst_shape = (size, size);
 
         c.bench_function(&format!("warp_bilinear_{size}x{size}"), |b| {
@@ -61,7 +62,7 @@ fn bench_warp_bilinear(c: &mut Criterion) {
                     &src_affine,
                     &dst_affine,
                     dst_shape,
-                    &ct,
+                    &pipeline,
                     ResamplingMethod::Bilinear,
                     None,
                 )

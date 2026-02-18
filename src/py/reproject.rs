@@ -6,7 +6,7 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::affine::Affine;
-use crate::proj::crs::CrsTransform;
+use crate::proj::pipeline::Pipeline;
 use crate::resample::ResamplingMethod;
 use crate::warp::engine;
 
@@ -67,15 +67,15 @@ pub fn reproject_array<'py>(
             dst_transform[5],
         );
 
-        let crs_transform = CrsTransform::new(&src_crs, &dst_crs)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let pipeline =
+            Pipeline::new(&src_crs, &dst_crs).map_err(|e| PyValueError::new_err(e.to_string()))?;
 
         engine::warp(
             &src_array.view(),
             &src_affine,
             &dst_affine,
             dst_shape,
-            &crs_transform,
+            &pipeline,
             method,
             nodata,
         )
