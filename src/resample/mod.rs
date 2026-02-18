@@ -1,5 +1,8 @@
 //! Resampling kernels for the warp engine.
 
+pub mod bilinear;
+pub mod nearest;
+
 /// Available resampling methods.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ResamplingMethod {

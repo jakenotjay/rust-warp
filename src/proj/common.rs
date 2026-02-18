@@ -18,7 +18,9 @@ pub fn meridional_arc(ellipsoid: &Ellipsoid, phi: f64) -> f64 {
     let a6 = -35.0 / 48.0 * n3;
     let a8 = 315.0 / 512.0 * n4;
 
-    a * (a0 * phi + a2 * (2.0 * phi).sin() + a4 * (4.0 * phi).sin()
+    a * (a0 * phi
+        + a2 * (2.0 * phi).sin()
+        + a4 * (4.0 * phi).sin()
         + a6 * (6.0 * phi).sin()
         + a8 * (8.0 * phi).sin())
 }

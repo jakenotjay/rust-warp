@@ -19,11 +19,12 @@ ndarray = { version = "0.16", features = ["rayon"] }
 rayon = "1.10"           # Data parallelism
 
 # Projection math
-proj4rs = "0.1"          # Pure-Rust PROJ.4 implementation
+proj4rs = { version = "0.1", features = ["crs-definitions"] }
 
 # Utilities
 thiserror = "2.0"        # Error types
 log = "0.4"
+num-traits = "0.2"       # Generic numeric casts
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
