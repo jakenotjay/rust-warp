@@ -1,0 +1,40 @@
+[package]
+name = "rust-warp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[lib]
+name = "_rust"
+crate-type = ["cdylib", "rlib"]
+# cdylib = shared library for Python; rlib = for Rust tests
+
+[dependencies]
+# Python bindings
+pyo3 = { version = "0.23", features = ["abi3-py310"] }
+numpy = "0.23"          # rust-numpy: PyO3 <-> ndarray bridge
+
+# Core computation
+ndarray = { version = "0.16", features = ["rayon"] }
+rayon = "1.10"           # Data parallelism
+
+# Projection math
+proj4rs = "0.1"          # Pure-Rust PROJ.4 implementation
+
+# Utilities
+thiserror = "2.0"        # Error types
+log = "0.4"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+approx = "0.5"           # Float comparison in tests
+
+[[bench]]
+name = "warp_bench"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "fat"              # Link-time optimisation for maximum speed
+codegen-units = 1        # Better optimisation, slower compile
+strip = true             # Smaller binary
