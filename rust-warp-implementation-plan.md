@@ -1,8 +1,8 @@
-# geoflux — Implementation Plan
+# rust-warp — Implementation Plan
 
 ## Rust-Powered Raster Reprojection for Xarray/Dask
 
-**Project codename:** `geoflux`
+**Project codename:** `rust-warp`
 **Target:** A Python library backed by a Rust core that reprojects chunked raster data without GDAL, integrating natively with xarray and dask.
 
 ---
@@ -65,7 +65,7 @@ uv tool install maturin
 maturin --version  # Should be >= 1.7.x
 
 # ── Step 6: System dependencies for benchmarking ──
-# We need GDAL and PROJ for the comparison benchmarks (not for geoflux itself)
+# We need GDAL and PROJ for the comparison benchmarks (not for rust-warp itself)
 brew install gdal proj
 ```
 
@@ -112,14 +112,14 @@ Run this to create the entire project skeleton:
 
 ```bash
 # ── Create and enter project directory ──
-mkdir geoflux && cd geoflux
+mkdir rust-warp && cd rust-warp
 git init
 
 # ── Initialise with uv (creates pyproject.toml and .python-version) ──
-uv init --lib --build-backend maturin --name geoflux
+uv init --lib --build-backend maturin --name rust-warp
 
 # This creates:
-#   geoflux/
+#   rust-warp/
 #   ├── .python-version
 #   ├── Cargo.toml
 #   ├── pyproject.toml
@@ -128,12 +128,12 @@ uv init --lib --build-backend maturin --name geoflux
 #       └── lib.rs
 
 # ── Restructure into the mixed layout we need ──
-# The mixed layout has Python code in python/geoflux/ and Rust in src/
-mkdir -p python/geoflux
+# The mixed layout has Python code in python/rust-warp/ and Rust in src/
+mkdir -p python/rust-warp
 mv src/lib.rs src/lib.rs.bak  # We'll rewrite this
 
 # Create the Python package init
-mkdir -p python/geoflux
+mkdir -p python/rust-warp
 ```
 
 ### 2.3 pyproject.toml (Full Version)
@@ -142,7 +142,7 @@ This is the central configuration file. **Create this exactly:**
 
 ```toml
 [project]
-name = "geoflux"
+name = "rust-warp"
 version = "0.1.0"
 description = "High-performance raster reprojection engine in Rust with xarray/dask integration"
 readme = "README.md"
@@ -167,11 +167,11 @@ xarray = [
     "pyproj>=3.4",
 ]
 all = [
-    "geoflux[xarray]",
+    "rust-warp[xarray]",
     "odc-geo>=0.4",
 ]
 dev = [
-    "geoflux[all]",
+    "rust-warp[all]",
     "pytest>=7.0",
     "pytest-benchmark>=4.0",
     "rioxarray>=0.15",
@@ -189,7 +189,7 @@ build-backend = "maturin"
 [tool.maturin]
 # "mixed" layout: Python in python/, Rust in src/
 python-source = "python"
-module-name = "geoflux._rust"
+module-name = "rust-warp._rust"
 features = ["pyo3/extension-module"]
 
 [tool.uv]
@@ -220,7 +220,7 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 ```toml
 [package]
-name = "geoflux"
+name = "rust-warp"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
@@ -264,7 +264,7 @@ strip = true             # Smaller binary
 ### 2.5 Directory Layout (Target State)
 
 ```
-geoflux/
+rust-warp/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                  # Rust tests + Python tests + linting
@@ -322,13 +322,13 @@ geoflux/
 │       └── types.rs                # Python-visible types
 │
 ├── python/                         # ── Python source ──
-│   └── geoflux/
+│   └── rust-warp/
 │       ├── __init__.py             # Public API
 │       ├── _rust.pyi               # Type stubs for the Rust module
 │       ├── geobox.py               # GeoBox class (Python side)
 │       ├── reproject.py            # High-level reproject() function
 │       ├── dask_graph.py           # Dask graph builder
-│       └── xarray_accessor.py      # .geoflux xarray accessor
+│       └── xarray_accessor.py      # .rust-warp xarray accessor
 │
 ├── tests/                          # ── Test suite ──
 │   ├── conftest.py                 # Shared fixtures
@@ -357,7 +357,7 @@ geoflux/
 
 ```bash
 # ── First-time setup ──
-cd geoflux
+cd rust-warp
 uv sync --all-extras          # Creates venv, installs all deps + compiles Rust
 
 # ── After editing Rust code ──
@@ -553,7 +553,7 @@ And Python-side tests comparing against pyproj:
 # tests/test_projections.py
 import numpy as np
 import pyproj
-from geoflux._rust import transform_points
+from rust-warp._rust import transform_points
 
 def test_utm_matches_pyproj():
     """Verify Rust projection matches pyproj for UTM zone 33N."""
@@ -567,7 +567,7 @@ def test_utm_matches_pyproj():
     # pyproj reference
     ex_pyproj, ny_pyproj = transformer.transform(lons, lats)
     
-    # geoflux Rust implementation
+    # rust-warp Rust implementation
     ex_rust, ny_rust = transform_points(
         lons, lats,
         src_crs="EPSG:4326",
@@ -777,8 +777,8 @@ Use Rust generics with trait bounds: `T: Copy + NumCast + PartialOrd + Default +
 | `src/py/reproject.rs` | `reproject_array()` binding |
 | `src/py/plan.rs` | `plan_reproject()` binding |
 | `src/py/types.rs` | Python-visible enums and structs |
-| `python/geoflux/__init__.py` | Package init, imports from `_rust` |
-| `python/geoflux/_rust.pyi` | Type stubs |
+| `python/rust-warp/__init__.py` | Package init, imports from `_rust` |
+| `python/rust-warp/_rust.pyi` | Type stubs |
 
 ### 5.2 Primary Python-Callable Function
 
@@ -844,7 +844,7 @@ fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ### 5.3 The Type Stub File
 
 ```python
-# python/geoflux/_rust.pyi
+# python/rust-warp/_rust.pyi
 import numpy as np
 import numpy.typing as npt
 
@@ -881,7 +881,7 @@ def transform_points(
 
 ### 5.4 Acceptance Criteria
 
-- `from geoflux._rust import reproject_array` works.
+- `from rust-warp._rust import reproject_array` works.
 - Passing a numpy array in produces a numpy array out with correct shape/dtype.
 - The GIL is released during computation (verify with threading test).
 - Invalid CRS strings produce clear Python `ValueError`.
@@ -902,9 +902,9 @@ def transform_points(
 | `src/chunk/planner.rs` | Compute source windows for each dest tile (Rust) |
 | `src/chunk/halo.rs` | Kernel-radius padding calculation |
 | `src/py/plan.rs` | `plan_reproject()` PyO3 binding |
-| `python/geoflux/geobox.py` | GeoBox class |
-| `python/geoflux/dask_graph.py` | Dask graph construction |
-| `python/geoflux/reproject.py` | High-level `reproject()` that dispatches numpy/dask |
+| `python/rust-warp/geobox.py` | GeoBox class |
+| `python/rust-warp/dask_graph.py` | Dask graph construction |
+| `python/rust-warp/reproject.py` | High-level `reproject()` that dispatches numpy/dask |
 
 ### 6.2 The Chunk Planning Algorithm
 
@@ -954,11 +954,11 @@ pub fn plan_tiles(
 ### 6.3 Dask Graph Builder (Python Side)
 
 ```python
-# python/geoflux/dask_graph.py
+# python/rust-warp/dask_graph.py
 
 import dask.array as da
 import numpy as np
-from geoflux._rust import reproject_array, plan_reproject
+from rust-warp._rust import reproject_array, plan_reproject
 
 def _reproject_tile(src_block, src_crs, src_transform, dst_crs, dst_transform,
                     dst_shape, resampling, nodata):
@@ -1073,22 +1073,22 @@ def reproject_dask(src_data, src_geobox, dst_geobox, resampling='bilinear',
 
 | File | Contents |
 |---|---|
-| `python/geoflux/xarray_accessor.py` | `.geoflux` accessor on DataArray and Dataset |
-| `python/geoflux/geobox.py` | GeoBox with `from_xarray()` and `from_bbox()` |
-| `python/geoflux/__init__.py` | Clean public API |
+| `python/rust-warp/xarray_accessor.py` | `.rust-warp` accessor on DataArray and Dataset |
+| `python/rust-warp/geobox.py` | GeoBox with `from_xarray()` and `from_bbox()` |
+| `python/rust-warp/__init__.py` | Clean public API |
 
 ### 7.2 User-Facing API
 
 ```python
 import xarray as xr
-import geoflux
+import rust-warp
 
 # ── Option 1: Accessor ──
 ds = xr.open_dataset("sentinel2.zarr", engine="zarr", chunks={})
-reprojected = ds.geoflux.reproject("EPSG:4326", resolution=0.0001)
+reprojected = ds.rust-warp.reproject("EPSG:4326", resolution=0.0001)
 
 # ── Option 2: Functional ──
-from geoflux import reproject, GeoBox
+from rust-warp import reproject, GeoBox
 
 dst_geobox = GeoBox.from_bbox(
     bbox=(-10, 50, 2, 60),
@@ -1098,13 +1098,13 @@ dst_geobox = GeoBox.from_bbox(
 reprojected = reproject(ds, dst_geobox, resampling="bilinear")
 
 # ── Option 3: Match another dataset's grid ──
-reprojected = ds.geoflux.reproject_match(reference_ds)
+reprojected = ds.rust-warp.reproject_match(reference_ds)
 ```
 
 ### 7.3 GeoBox Class
 
 ```python
-# python/geoflux/geobox.py
+# python/rust-warp/geobox.py
 
 from dataclasses import dataclass
 import numpy as np
@@ -1141,14 +1141,14 @@ class GeoBox:
 ### 7.4 Accessor Implementation
 
 ```python
-# python/geoflux/xarray_accessor.py
+# python/rust-warp/xarray_accessor.py
 
 import xarray as xr
 from .geobox import GeoBox
 from .reproject import reproject
 
-@xr.register_dataarray_accessor("geoflux")
-class GeofluxAccessor:
+@xr.register_dataarray_accessor("rust-warp")
+class rust-warpAccessor:
     def __init__(self, da):
         self._da = da
     
@@ -1333,7 +1333,7 @@ Level 5: Performance Tests (Python — pytest-benchmark)
 ```python
 # scripts/generate_test_data.py
 
-"""Generate synthetic test datasets for the geoflux test suite.
+"""Generate synthetic test datasets for the rust-warp test suite.
 
 Creates:
   tests/data/synthetic_utm33n_256.npy     - 256×256 float32, UTM zone 33N
@@ -1399,10 +1399,10 @@ def odc_reference():
 
 import numpy as np
 import pytest
-from geoflux._rust import reproject_array
+from rust-warp._rust import reproject_array
 
 class TestWarpCorrectness:
-    """Compare geoflux output pixel-by-pixel against GDAL."""
+    """Compare rust-warp output pixel-by-pixel against GDAL."""
     
     @pytest.mark.parametrize("resampling", ["nearest", "bilinear", "cubic"])
     @pytest.mark.parametrize("src_crs,dst_crs", [
@@ -1427,7 +1427,7 @@ class TestWarpCorrectness:
             dst_shape, resampling
         )
         
-        # geoflux
+        # rust-warp
         actual = reproject_array(
             src, src_crs, src_transform, dst_crs, dst_transform,
             dst_shape, resampling
@@ -1466,7 +1466,7 @@ Libraries under test:
 
 | Library | How invoked |
 |---|---|
-| **geoflux** (this project) | `reproject_array()` and `reproject()` with dask |
+| **rust-warp** (this project) | `reproject_array()` and `reproject()` with dask |
 | **GDAL direct** (via rasterio) | `rasterio.warp.reproject()` |
 | **odc-geo** | `xr_reproject()` with dask |
 | **rioxarray** | `da.rio.reproject()` (non-dask only) |
@@ -1493,8 +1493,8 @@ CRS_PAIRS = [
 @pytest.mark.parametrize("src_crs,dst_crs", CRS_PAIRS)
 class TestBenchmarkEndToEnd:
     
-    def test_geoflux(self, benchmark, size, resampling, src_crs, dst_crs):
-        from geoflux._rust import reproject_array
+    def test_rust-warp(self, benchmark, size, resampling, src_crs, dst_crs):
+        from rust-warp._rust import reproject_array
         src, src_tf, dst_tf, dst_shape = _setup(size, src_crs, dst_crs)
         
         benchmark(reproject_array,
@@ -1533,8 +1533,8 @@ import time
 import numpy as np
 
 def test_parallel_scaling():
-    """Verify that geoflux scales with threads (unlike GDAL)."""
-    from geoflux._rust import reproject_array
+    """Verify that rust-warp scales with threads (unlike GDAL)."""
+    from rust-warp._rust import reproject_array
     
     src = np.random.randn(1024, 1024).astype(np.float64)
     src_crs, dst_crs = "EPSG:32633", "EPSG:4326"
@@ -1570,7 +1570,7 @@ import numpy as np
 
 def test_memory_bounded():
     """Verify memory usage doesn't exceed 2x (src + dst)."""
-    from geoflux._rust import reproject_array
+    from rust-warp._rust import reproject_array
     
     size = 4096
     src = np.random.randn(size, size).astype(np.float32)
@@ -1648,8 +1648,8 @@ src/py/mod.rs
 src/py/reproject.rs
 src/py/plan.rs
 src/py/types.rs
-python/geoflux/__init__.py
-python/geoflux/_rust.pyi
+python/rust-warp/__init__.py
+python/rust-warp/_rust.pyi
 ```
 
 ### Phase 4 Files
@@ -1657,15 +1657,15 @@ python/geoflux/_rust.pyi
 src/chunk/mod.rs
 src/chunk/planner.rs
 src/chunk/halo.rs
-python/geoflux/geobox.py
-python/geoflux/dask_graph.py
-python/geoflux/reproject.py
+python/rust-warp/geobox.py
+python/rust-warp/dask_graph.py
+python/rust-warp/reproject.py
 tests/test_dask.py
 ```
 
 ### Phase 5 Files
 ```
-python/geoflux/xarray_accessor.py
+python/rust-warp/xarray_accessor.py
 tests/test_xarray.py
 ```
 
