@@ -40,6 +40,8 @@ dev = [
     "pyproj>=3.4",
     "scipy>=1.10",
     "matplotlib>=3.7",
+    "obstore>=0.4",
+    "zarr>=3.0",
 ]
 
 [build-system]

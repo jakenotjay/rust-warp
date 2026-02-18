@@ -6,6 +6,7 @@ Cargo.lock
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.abi3.so
 dist/
 .venv/
 
