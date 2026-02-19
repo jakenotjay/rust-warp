@@ -47,6 +47,34 @@ def utm33_to_4326_setup():
 
 
 @pytest.fixture
+def downscale_setup():
+    """Create a 128x128 source raster and 32x32 destination for average downsampling."""
+    src_rows, src_cols = 128, 128
+    crs = "EPSG:32633"
+    pixel_size = 100.0
+    origin_x, origin_y = 500000.0, 6600000.0
+
+    src_transform = (pixel_size, 0.0, origin_x, 0.0, -pixel_size, origin_y)
+
+    rows, cols = np.meshgrid(np.arange(src_rows), np.arange(src_cols), indexing="ij")
+    src = (rows * src_cols + cols).astype(np.float64)
+
+    # 4× downscale: 128→32
+    dst_rows, dst_cols = 32, 32
+    dst_pixel_size = pixel_size * (src_rows / dst_rows)
+    dst_transform = (dst_pixel_size, 0.0, origin_x, 0.0, -dst_pixel_size, origin_y)
+
+    return {
+        "src": src,
+        "src_crs": crs,
+        "src_transform": src_transform,
+        "dst_crs": crs,
+        "dst_transform": dst_transform,
+        "dst_shape": (dst_rows, dst_cols),
+    }
+
+
+@pytest.fixture
 def utm33_to_3857_setup():
     """Create a synthetic 64x64 UTM 33N raster and compute EPSG:3857 destination grid."""
     src_rows, src_cols = 64, 64

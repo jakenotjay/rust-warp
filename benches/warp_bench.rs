@@ -26,6 +26,41 @@ fn make_test_data(size: usize) -> (Array2<f64>, Affine, Affine, Pipeline) {
     (src, src_affine, dst_affine, pipeline)
 }
 
+fn make_downscale_data(
+    src_size: usize,
+    dst_size: usize,
+) -> (Array2<f64>, Affine, Affine, Pipeline) {
+    let mut src = Array2::zeros((src_size, src_size));
+    for row in 0..src_size {
+        for col in 0..src_size {
+            src[(row, col)] = (row * src_size + col) as f64;
+        }
+    }
+
+    let src_pixel_size = 100.0;
+    let dst_pixel_size = src_pixel_size * (src_size as f64 / dst_size as f64);
+    let src_affine = Affine::new(
+        src_pixel_size,
+        0.0,
+        500000.0,
+        0.0,
+        -src_pixel_size,
+        6600000.0,
+    );
+    let dst_affine = Affine::new(
+        dst_pixel_size,
+        0.0,
+        500000.0,
+        0.0,
+        -dst_pixel_size,
+        6600000.0,
+    );
+
+    let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
+
+    (src, src_affine, dst_affine, pipeline)
+}
+
 fn bench_warp_nearest(c: &mut Criterion) {
     let sizes = [256, 512, 1024];
     for &size in &sizes {
@@ -72,6 +107,76 @@ fn bench_warp_bilinear(c: &mut Criterion) {
     }
 }
 
+fn bench_warp_cubic(c: &mut Criterion) {
+    let sizes = [256, 512, 1024];
+    for &size in &sizes {
+        let (src, src_affine, dst_affine, pipeline) = make_test_data(size);
+        let dst_shape = (size, size);
+
+        c.bench_function(&format!("warp_cubic_{size}x{size}"), |b| {
+            b.iter(|| {
+                engine::warp(
+                    &src.view(),
+                    &src_affine,
+                    &dst_affine,
+                    dst_shape,
+                    &pipeline,
+                    ResamplingMethod::Cubic,
+                    None,
+                )
+                .unwrap()
+            });
+        });
+    }
+}
+
+fn bench_warp_lanczos(c: &mut Criterion) {
+    let sizes = [256, 512, 1024];
+    for &size in &sizes {
+        let (src, src_affine, dst_affine, pipeline) = make_test_data(size);
+        let dst_shape = (size, size);
+
+        c.bench_function(&format!("warp_lanczos_{size}x{size}"), |b| {
+            b.iter(|| {
+                engine::warp(
+                    &src.view(),
+                    &src_affine,
+                    &dst_affine,
+                    dst_shape,
+                    &pipeline,
+                    ResamplingMethod::Lanczos,
+                    None,
+                )
+                .unwrap()
+            });
+        });
+    }
+}
+
+fn bench_warp_average(c: &mut Criterion) {
+    // Average is most meaningful for downsampling: 512→128
+    let sizes = [(256, 64), (512, 128), (1024, 256)];
+    for &(src_size, dst_size) in &sizes {
+        let (src, src_affine, dst_affine, pipeline) = make_downscale_data(src_size, dst_size);
+        let dst_shape = (dst_size, dst_size);
+
+        c.bench_function(&format!("warp_average_{src_size}to{dst_size}"), |b| {
+            b.iter(|| {
+                engine::warp(
+                    &src.view(),
+                    &src_affine,
+                    &dst_affine,
+                    dst_shape,
+                    &pipeline,
+                    ResamplingMethod::Average,
+                    None,
+                )
+                .unwrap()
+            });
+        });
+    }
+}
+
 fn bench_crs_transform(c: &mut Criterion) {
     let ct = CrsTransform::new("EPSG:4326", "EPSG:32633").unwrap();
     let n = 1_000_000;
@@ -100,6 +205,9 @@ criterion_group!(
     benches,
     bench_warp_nearest,
     bench_warp_bilinear,
+    bench_warp_cubic,
+    bench_warp_lanczos,
+    bench_warp_average,
     bench_crs_transform
 );
 criterion_main!(benches);

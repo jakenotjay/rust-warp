@@ -20,7 +20,7 @@ use crate::warp::engine;
 ///     dst_crs: Destination CRS string.
 ///     dst_transform: Destination affine transform as 6-element tuple (same convention).
 ///     dst_shape: Output shape as (rows, cols) tuple.
-///     resampling: Resampling method name ("nearest" or "bilinear").
+///     resampling: Resampling method name ("nearest", "bilinear", "cubic", "lanczos", or "average").
 ///     nodata: Optional nodata value.
 ///
 /// Returns:

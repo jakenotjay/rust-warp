@@ -12,6 +12,9 @@ def gdal_reproject(src, src_crs, src_transform, dst_crs, dst_transform, dst_shap
     resampling_map = {
         "nearest": rasterio.warp.Resampling.nearest,
         "bilinear": rasterio.warp.Resampling.bilinear,
+        "cubic": rasterio.warp.Resampling.cubic,
+        "lanczos": rasterio.warp.Resampling.lanczos,
+        "average": rasterio.warp.Resampling.average,
     }
     dst = np.full(dst_shape, np.nan, dtype=np.float64)
     rasterio.warp.reproject(
@@ -125,6 +128,95 @@ class TestBilinearVsGDAL:
             )
 
 
+class TestCubicVsGDAL:
+    """Cubic reprojection should be close to GDAL.
+
+    Cubic has a 4×4 neighborhood so more edge pixels are NaN.
+    Tolerance is generous (atol=10) initially.
+    """
+
+    def test_utm33_to_4326(self, utm33_to_4326_setup):
+        s = utm33_to_4326_setup
+        rust_result = reproject_array(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="cubic",
+        )
+        gdal_result = gdal_reproject(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="cubic",
+        )
+
+        rust_valid = ~np.isnan(rust_result)
+        gdal_valid = ~np.isnan(gdal_result)
+        both_valid = rust_valid & gdal_valid
+
+        if both_valid.any():
+            np.testing.assert_allclose(
+                rust_result[both_valid], gdal_result[both_valid],
+                atol=10.0, rtol=0.01,
+            )
+
+
+class TestLanczosVsGDAL:
+    """Lanczos reprojection should be close to GDAL.
+
+    Lanczos has a 6×6 neighborhood so even more edge pixels are NaN.
+    Tolerance is generous (atol=10) initially.
+    """
+
+    def test_utm33_to_4326(self, utm33_to_4326_setup):
+        s = utm33_to_4326_setup
+        rust_result = reproject_array(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="lanczos",
+        )
+        gdal_result = gdal_reproject(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="lanczos",
+        )
+
+        rust_valid = ~np.isnan(rust_result)
+        gdal_valid = ~np.isnan(gdal_result)
+        both_valid = rust_valid & gdal_valid
+
+        if both_valid.any():
+            np.testing.assert_allclose(
+                rust_result[both_valid], gdal_result[both_valid],
+                atol=10.0, rtol=0.01,
+            )
+
+
+class TestAverageVsGDAL:
+    """Average reprojection should be close to GDAL for downsampling."""
+
+    def test_downscale(self, downscale_setup):
+        s = downscale_setup
+        rust_result = reproject_array(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="average",
+        )
+        gdal_result = gdal_reproject(
+            s["src"], s["src_crs"], s["src_transform"],
+            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            resampling="average",
+        )
+
+        rust_valid = ~np.isnan(rust_result)
+        gdal_valid = ~np.isnan(gdal_result)
+        both_valid = rust_valid & gdal_valid
+
+        if both_valid.any():
+            np.testing.assert_allclose(
+                rust_result[both_valid], gdal_result[both_valid],
+                atol=10.0, rtol=0.05,
+            )
+
+
 class TestIdentity:
     """Same CRS reprojection should return the input."""
 
@@ -148,6 +240,39 @@ class TestIdentity:
         )
         # Interior pixels should match; edges may differ due to bilinear boundary
         np.testing.assert_allclose(result[1:-1, 1:-1], src[1:-1, 1:-1], atol=1e-6)
+
+    def test_identity_cubic(self):
+        src = np.arange(64, dtype=np.float64).reshape(8, 8)
+        transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000080.0)
+        crs = "EPSG:32633"
+
+        result = reproject_array(
+            src, crs, transform, crs, transform, (8, 8), resampling="cubic"
+        )
+        # Interior pixels (2:-2) should match; edges affected by cubic radius
+        np.testing.assert_allclose(result[2:-2, 2:-2], src[2:-2, 2:-2], atol=1e-6)
+
+    def test_identity_lanczos(self):
+        src = np.arange(144, dtype=np.float64).reshape(12, 12)
+        transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000120.0)
+        crs = "EPSG:32633"
+
+        result = reproject_array(
+            src, crs, transform, crs, transform, (12, 12), resampling="lanczos"
+        )
+        # Interior pixels (3:-3) should match; edges affected by lanczos radius
+        np.testing.assert_allclose(result[3:-3, 3:-3], src[3:-3, 3:-3], atol=1e-6)
+
+    def test_identity_average(self):
+        src = np.arange(64, dtype=np.float64).reshape(8, 8)
+        transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000080.0)
+        crs = "EPSG:32633"
+
+        result = reproject_array(
+            src, crs, transform, crs, transform, (8, 8), resampling="average"
+        )
+        # Average with scale=1 should match exactly
+        np.testing.assert_allclose(result, src, atol=1e-6)
 
 
 class TestNodata:
