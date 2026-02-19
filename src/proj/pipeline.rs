@@ -223,4 +223,82 @@ mod tests {
         assert_relative_eq!(x, 500000.0, epsilon = 0.01);
         assert_relative_eq!(y, 5760000.0, epsilon = 0.01);
     }
+
+    #[test]
+    fn test_native_vs_proj4rs_100_random_points() {
+        // Cross-validate native projections against proj4rs at 100 random-ish points
+        let crs_pairs = [
+            ("EPSG:4326", "EPSG:32633"), // UTM 33N
+            ("EPSG:4326", "EPSG:32617"), // UTM 17N
+            ("EPSG:4326", "EPSG:3857"),  // Web Mercator
+        ];
+
+        for &(src, dst) in &crs_pairs {
+            let native = Pipeline::new(src, dst).unwrap();
+            let fallback = {
+                let ct = CrsTransform::new(src, dst).unwrap();
+                Pipeline::Proj4rs(Box::new(ct))
+            };
+
+            // Generate test points in the destination CRS valid range
+            let base_points: Vec<(f64, f64)> = match dst {
+                "EPSG:32633" => (0..100)
+                    .map(|i| {
+                        let x = 300000.0 + (i as f64 / 99.0) * 400000.0;
+                        let y = 5000000.0 + (i as f64 / 99.0) * 2000000.0;
+                        (x, y)
+                    })
+                    .collect(),
+                "EPSG:32617" => (0..100)
+                    .map(|i| {
+                        let x = 300000.0 + (i as f64 / 99.0) * 400000.0;
+                        let y = 3000000.0 + (i as f64 / 99.0) * 2000000.0;
+                        (x, y)
+                    })
+                    .collect(),
+                "EPSG:3857" => (0..100)
+                    .map(|i| {
+                        let x = -10000000.0 + (i as f64 / 99.0) * 20000000.0;
+                        let y = -8000000.0 + (i as f64 / 99.0) * 16000000.0;
+                        (x, y)
+                    })
+                    .collect(),
+                _ => unreachable!(),
+            };
+
+            let mut max_err = 0.0_f64;
+            for &(x, y) in &base_points {
+                let (nx, ny) = native.transform_inv(x, y).unwrap();
+                let (px, py) = fallback.transform_inv(x, y).unwrap();
+                let err = ((nx - px).powi(2) + (ny - py).powi(2)).sqrt();
+                max_err = max_err.max(err);
+            }
+
+            // < 1mm error between native and proj4rs
+            assert!(
+                max_err < 0.001,
+                "CRS {src}->{dst}: max error = {max_err:.6} m (want < 0.001 m)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_utm_zones() {
+        // UTM → 4326 → UTM should return to original coordinates.
+        // transform_inv goes dst→src, so:
+        //   Pipeline::new("EPSG:4326", utm) : transform_inv(utm_x, utm_y) → (lon, lat)
+        //   Pipeline::new(utm, "EPSG:4326") : transform_inv(lon, lat) → (utm_x, utm_y)
+        for zone in [17_u32, 33, 45, 1, 60] {
+            let crs = format!("EPSG:326{zone:02}");
+            let to_4326 = Pipeline::new("EPSG:4326", &crs).unwrap();
+            let from_4326 = Pipeline::new(&crs, "EPSG:4326").unwrap();
+
+            let orig = (500000.0, 5500000.0);
+            let (lon, lat) = to_4326.transform_inv(orig.0, orig.1).unwrap();
+            let (x, y) = from_4326.transform_inv(lon, lat).unwrap();
+
+            assert_relative_eq!(x, orig.0, epsilon = 0.01);
+            assert_relative_eq!(y, orig.1, epsilon = 0.01);
+        }
+    }
 }

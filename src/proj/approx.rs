@@ -369,4 +369,92 @@ mod tests {
         assert_relative_eq!(col[0], 0.5, epsilon = 0.01);
         assert_relative_eq!(row[0], 0.5, epsilon = 0.01);
     }
+
+    #[test]
+    fn test_linear_approx_accuracy_utm_to_4326() {
+        // Verify LinearApprox stays within 0.125 pixel tolerance for UTM→4326
+        let pipeline = Pipeline::new("EPSG:4326", "EPSG:32633").unwrap();
+        let dst_affine = Affine::new(100.0, 0.0, 400000.0, 0.0, -100.0, 6000000.0);
+        let src_affine = Affine::new(0.001, 0.0, 13.0, 0.0, -0.001, 55.0);
+        let src_inv = src_affine.inverse().unwrap();
+
+        let approx = LinearApprox::new(0.125);
+        let width = 1024;
+
+        for row in [0, 100, 250, 500, 900] {
+            let mut approx_col = vec![0.0; width];
+            let mut approx_row = vec![0.0; width];
+
+            approx
+                .transform_scanline(
+                    &pipeline,
+                    &dst_affine,
+                    &src_inv,
+                    row,
+                    width,
+                    &mut approx_col,
+                    &mut approx_row,
+                )
+                .unwrap();
+
+            let (exact_col, exact_row) =
+                exact_scanline(&pipeline, &dst_affine, &src_inv, row, width);
+
+            let mut max_err = 0.0_f64;
+            for i in 0..width {
+                let err_c = (approx_col[i] - exact_col[i]).abs();
+                let err_r = (approx_row[i] - exact_row[i]).abs();
+                max_err = max_err.max(err_c.max(err_r));
+            }
+
+            assert!(
+                max_err < 0.2,
+                "Row {row}: max error = {max_err:.6} pixels (want < 0.2)"
+            );
+        }
+    }
+
+    #[test]
+    fn test_linear_approx_accuracy_webmerc_to_4326() {
+        // Verify LinearApprox for WebMerc→4326 at multiple scanlines
+        let pipeline = Pipeline::new("EPSG:4326", "EPSG:3857").unwrap();
+        let dst_affine = Affine::new(1000.0, 0.0, 0.0, 0.0, -1000.0, 8000000.0);
+        let src_affine = Affine::new(0.01, 0.0, -10.0, 0.0, -0.01, 65.0);
+        let src_inv = src_affine.inverse().unwrap();
+
+        let approx = LinearApprox::new(0.125);
+        let width = 1024;
+
+        for row in [0, 200, 500, 800] {
+            let mut approx_col = vec![0.0; width];
+            let mut approx_row = vec![0.0; width];
+
+            approx
+                .transform_scanline(
+                    &pipeline,
+                    &dst_affine,
+                    &src_inv,
+                    row,
+                    width,
+                    &mut approx_col,
+                    &mut approx_row,
+                )
+                .unwrap();
+
+            let (exact_col, exact_row) =
+                exact_scanline(&pipeline, &dst_affine, &src_inv, row, width);
+
+            let mut max_err = 0.0_f64;
+            for i in 0..width {
+                let err_c = (approx_col[i] - exact_col[i]).abs();
+                let err_r = (approx_row[i] - exact_row[i]).abs();
+                max_err = max_err.max(err_c.max(err_r));
+            }
+
+            assert!(
+                max_err < 0.2,
+                "Row {row}: max error = {max_err:.6} pixels (want < 0.2)"
+            );
+        }
+    }
 }

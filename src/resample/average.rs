@@ -212,4 +212,39 @@ mod tests {
         let val = sample(&view, 2.5, 2.5, None, (2.0, 2.0)).unwrap();
         assert_eq!(val, 42);
     }
+
+    #[test]
+    fn test_known_2x_downscale_average() {
+        // 4×4 with known values, 2× downscale: each 2×2 block averages exactly
+        let arr = ndarray::array![
+            [10.0, 20.0, 30.0, 40.0],
+            [50.0, 60.0, 70.0, 80.0],
+            [90.0, 100.0, 110.0, 120.0],
+            [130.0, 140.0, 150.0, 160.0],
+        ];
+        let view = arr.view();
+
+        // Center of 2×2 block (0,0)-(1,1) is at (1.0, 1.0), scale=2
+        let val = sample(&view, 1.0, 1.0, None, (2.0, 2.0)).unwrap();
+        let expected = (10.0 + 20.0 + 50.0 + 60.0) / 4.0; // = 35.0
+        assert_relative_eq!(val, expected, epsilon = 1e-10);
+
+        // Center of 2×2 block (2,2)-(3,3) is at (3.0, 3.0), scale=2
+        let val = sample(&view, 3.0, 3.0, None, (2.0, 2.0)).unwrap();
+        let expected = (110.0 + 120.0 + 150.0 + 160.0) / 4.0; // = 135.0
+        assert_relative_eq!(val, expected, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_3x_downscale_with_nodata() {
+        // 6×6 with one nodata pixel in a 3×3 block
+        let mut arr = Array2::from_elem((6, 6), 100.0_f64);
+        arr[(1, 1)] = -9999.0; // nodata in first 3×3 block
+        let view = arr.view();
+
+        // 3× downscale, center of first 3×3 block
+        let val = sample(&view, 1.5, 1.5, Some(-9999.0), (3.0, 3.0)).unwrap();
+        // Should average remaining 8 pixels (all 100.0)
+        assert_relative_eq!(val, 100.0, epsilon = 1e-10);
+    }
 }

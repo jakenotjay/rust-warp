@@ -137,4 +137,33 @@ mod tests {
         let val = sample(&view, 1.75, 1.5, None).unwrap();
         assert_relative_eq!(val, 1.25, epsilon = 1e-10);
     }
+
+    #[test]
+    fn test_linear_gradient_exact_preservation() {
+        // Analytical test: bilinear interpolation should EXACTLY reproduce
+        // any linear function f(x,y) = ax + by + c
+        let a = 3.0_f64;
+        let b = -2.0_f64;
+        let c = 7.0_f64;
+
+        let mut arr = ndarray::Array2::zeros((10, 10));
+        for r in 0..10 {
+            for col in 0..10 {
+                arr[(r, col)] = a * col as f64 + b * r as f64 + c;
+            }
+        }
+        let view = arr.view();
+
+        // Sample at many sub-pixel positions — all should match f(x,y) exactly
+        for row_f in [1.5, 2.0, 3.25, 4.75, 7.5] {
+            for col_f in [1.5, 2.0, 3.25, 4.75, 7.5] {
+                let expected = a * (col_f - 0.5) + b * (row_f - 0.5) + c;
+                let val = sample(&view, col_f, row_f, None).unwrap();
+                assert!(
+                    (val - expected).abs() < 1e-10,
+                    "At ({col_f}, {row_f}): expected {expected}, got {val}"
+                );
+            }
+        }
+    }
 }

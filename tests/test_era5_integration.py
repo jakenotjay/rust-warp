@@ -9,7 +9,6 @@ from affine import Affine
 from odc.geo.geobox import GeoBox
 from odc.geo.warp import rio_reproject
 from rasterio.crs import CRS
-
 from rust_warp import reproject_array
 
 
@@ -19,9 +18,9 @@ def era5_europe():
 
     Returns source array, CRS, transform, and destination grid parameters.
     """
+    import xarray as xr
     from obstore.store import GCSStore
     from zarr.storage import ObjectStore
-    import xarray as xr
 
     gcs = GCSStore(
         "gcp-public-data-arco-era5",

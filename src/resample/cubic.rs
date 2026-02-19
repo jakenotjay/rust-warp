@@ -196,4 +196,52 @@ mod tests {
         let val = sample(&view, 3.5, 3.5, None::<i32>).unwrap();
         assert_eq!(val, 21); // 3*6+3 = 21
     }
+
+    #[test]
+    fn test_quadratic_surface_preservation() {
+        // Cubic convolution (Keys, a=-0.5) exactly reproduces polynomials up to degree 3.
+        // Test with quadratic: f(x,y) = 2x² + 3xy - y² + 5x - 2y + 10
+        let mut arr = Array2::zeros((12, 12));
+        for r in 0..12 {
+            for c in 0..12 {
+                let x = c as f64;
+                let y = r as f64;
+                arr[(r, c)] = 2.0 * x * x + 3.0 * x * y - y * y + 5.0 * x - 2.0 * y + 10.0;
+            }
+        }
+        let view = arr.view();
+
+        // Sample at sub-pixel positions (center-based coords)
+        for &row_f in &[3.5, 4.25, 5.0, 6.75, 8.5] {
+            for &col_f in &[3.5, 4.25, 5.0, 6.75, 8.5] {
+                let x = col_f - 0.5;
+                let y = row_f - 0.5;
+                let expected = 2.0 * x * x + 3.0 * x * y - y * y + 5.0 * x - 2.0 * y + 10.0;
+                let val = sample(&view, col_f, row_f, None).unwrap();
+                assert!(
+                    (val - expected).abs() < 1e-6,
+                    "At ({col_f}, {row_f}): expected {expected}, got {val}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_weight_partition_of_unity_2d() {
+        // For the 2D case, product of 1D weights should still sum to 1
+        for &dx in &[0.0, 0.1, 0.25, 0.5, 0.75, 0.9] {
+            for &dy in &[0.0, 0.1, 0.25, 0.5, 0.75, 0.9] {
+                let wx: [f64; 4] = std::array::from_fn(|k| cubic_weight(dx - (k as f64 - 1.0)));
+                let wy: [f64; 4] = std::array::from_fn(|k| cubic_weight(dy - (k as f64 - 1.0)));
+                let sum_2d: f64 = wx
+                    .iter()
+                    .flat_map(|&wx_i| wy.iter().map(move |&wy_j| wx_i * wy_j))
+                    .sum();
+                assert!(
+                    (sum_2d - 1.0).abs() < 1e-12,
+                    "2D weight sum at ({dx}, {dy}): {sum_2d}"
+                );
+            }
+        }
+    }
 }

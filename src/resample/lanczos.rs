@@ -304,4 +304,43 @@ mod tests {
         let val = sample(&view, 5.5, 5.5, None::<i32>).unwrap();
         assert_eq!(val, 55); // 5*10+5 = 55
     }
+
+    #[test]
+    fn test_constant_field_exact_reproduction() {
+        // A constant field should be reproduced exactly regardless of sub-pixel position
+        let val = 42.0_f64;
+        let arr = Array2::from_elem((12, 12), val);
+        let view = arr.view();
+
+        for &row_f in &[4.5, 5.0, 5.25, 6.75, 7.5] {
+            for &col_f in &[4.5, 5.0, 5.25, 6.75, 7.5] {
+                let result = sample(&view, col_f, row_f, None).unwrap();
+                assert!(
+                    (result - val).abs() < 1e-10,
+                    "Constant field not reproduced at ({col_f}, {row_f}): got {result}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_weight_normalization_sums_to_one() {
+        // After normalization, 1D Lanczos weights should sum to 1.0
+        for &dx in &[0.0, 0.1, 0.25, 0.5, 0.75, 0.9] {
+            let mut wx = [0.0_f64; 6];
+            for (k, offset) in (-2..=3_isize).enumerate() {
+                wx[k] = lanczos_weight(dx - offset as f64);
+            }
+            let sum: f64 = wx.iter().sum();
+            // Normalize
+            for w in &mut wx {
+                *w /= sum;
+            }
+            let norm_sum: f64 = wx.iter().sum();
+            assert!(
+                (norm_sum - 1.0).abs() < 1e-12,
+                "Normalized weight sum at dx={dx}: {norm_sum}"
+            );
+        }
+    }
 }

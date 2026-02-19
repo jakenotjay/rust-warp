@@ -4,11 +4,11 @@ import numpy as np
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-from rust_warp import reproject_array
+from rust_warp import plan_reproject, reproject_array
 
 
 def _make_test_data(size):
-    """Create a synthetic raster and UTM→4326 transform parameters."""
+    """Create a synthetic raster and UTM->4326 transform parameters."""
     src_crs = "EPSG:32633"
     dst_crs = "EPSG:4326"
     pixel_size = 100.0
@@ -53,6 +53,11 @@ def _make_downscale_data(src_size, dst_size):
     return src, crs, src_transform, crs, dst_transform, dst_shape
 
 
+# ---------------------------------------------------------------------------
+# Nearest
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.benchmark(group="nearest")
 @pytest.mark.parametrize("size", [256, 512, 1024])
 def test_rustwarp_nearest(benchmark, size):
@@ -84,6 +89,11 @@ def test_rasterio_nearest(benchmark, size):
         return dst
 
     benchmark(_reproject)
+
+
+# ---------------------------------------------------------------------------
+# Bilinear
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.benchmark(group="bilinear")
@@ -119,6 +129,11 @@ def test_rasterio_bilinear(benchmark, size):
     benchmark(_reproject)
 
 
+# ---------------------------------------------------------------------------
+# Cubic
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.benchmark(group="cubic")
 @pytest.mark.parametrize("size", [256, 512, 1024])
 def test_rustwarp_cubic(benchmark, size):
@@ -152,6 +167,11 @@ def test_rasterio_cubic(benchmark, size):
     benchmark(_reproject)
 
 
+# ---------------------------------------------------------------------------
+# Lanczos
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.benchmark(group="lanczos")
 @pytest.mark.parametrize("size", [256, 512, 1024])
 def test_rustwarp_lanczos(benchmark, size):
@@ -183,6 +203,11 @@ def test_rasterio_lanczos(benchmark, size):
         return dst
 
     benchmark(_reproject)
+
+
+# ---------------------------------------------------------------------------
+# Average
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.benchmark(group="average")
@@ -220,3 +245,80 @@ def test_rasterio_average(benchmark, src_size, dst_size):
         return dst
 
     benchmark(_reproject)
+
+
+# ---------------------------------------------------------------------------
+# Plan overhead
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.benchmark(group="plan")
+@pytest.mark.parametrize("n_tiles", [4, 16, 64, 256])
+def test_plan_reproject_overhead(benchmark, n_tiles):
+    """Measure plan_reproject overhead at various tile counts."""
+    import math
+    tile_size = max(32, int(1024 / math.isqrt(n_tiles)))
+    dst_size = tile_size * int(math.isqrt(n_tiles))
+
+    def _plan():
+        return plan_reproject(
+            src_crs="EPSG:32633",
+            src_transform=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
+            src_shape=(1024, 1024),
+            dst_crs="EPSG:4326",
+            dst_transform=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+            dst_shape=(dst_size, dst_size),
+            dst_chunks=(tile_size, tile_size),
+        )
+
+    benchmark(_plan)
+
+
+# ---------------------------------------------------------------------------
+# Multi-band benchmark
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.benchmark(group="multiband")
+@pytest.mark.parametrize("n_bands", [3, 64])
+def test_rustwarp_multiband(benchmark, n_bands):
+    """Multi-band reprojection (band-by-band)."""
+    src, src_crs, src_transform, dst_crs, dst_transform, dst_shape = _make_test_data(256)
+    bands = [src.copy() for _ in range(n_bands)]
+
+    def _reproject_all():
+        return [
+            reproject_array(
+                band, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+                resampling="bilinear",
+            )
+            for band in bands
+        ]
+
+    benchmark(_reproject_all)
+
+
+@pytest.mark.benchmark(group="multiband")
+@pytest.mark.parametrize("n_bands", [3, 64])
+def test_rasterio_multiband(benchmark, n_bands):
+    """Multi-band rasterio reprojection (band-by-band)."""
+    src, src_crs, src_transform, dst_crs, dst_transform, dst_shape = _make_test_data(256)
+    bands = [src.copy() for _ in range(n_bands)]
+
+    def _reproject_all():
+        results = []
+        for band in bands:
+            dst = np.full(dst_shape, np.nan, dtype=np.float64)
+            rasterio.warp.reproject(
+                source=band,
+                destination=dst,
+                src_transform=rasterio.transform.Affine(*src_transform),
+                src_crs=CRS.from_user_input(src_crs),
+                dst_transform=rasterio.transform.Affine(*dst_transform),
+                dst_crs=CRS.from_user_input(dst_crs),
+                resampling=rasterio.warp.Resampling.bilinear,
+            )
+            results.append(dst)
+        return results
+
+    benchmark(_reproject_all)

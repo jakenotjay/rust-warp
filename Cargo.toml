@@ -3,6 +3,11 @@ name = "rust-warp"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
+description = "High-performance raster reprojection engine with xarray/dask integration"
+repository = "https://github.com/jww/rust-warp"
+license = "MIT"
+keywords = ["geospatial", "reprojection", "raster", "xarray", "gis"]
+categories = ["science::geo", "mathematics"]
 
 [lib]
 name = "_rust"

@@ -92,20 +92,17 @@ pub fn plan_reproject(
 
     let result: Vec<PyObject> = plans
         .iter()
-        .map(|plan| {
+        .map(|plan| -> PyResult<PyObject> {
             let dict = PyDict::new(py);
-            dict.set_item("dst_slice", plan.dst_slice).unwrap();
-            dict.set_item("src_slice", plan.src_slice).unwrap();
-            dict.set_item("src_transform", plan.src_transform.to_tuple())
-                .unwrap();
-            dict.set_item("dst_transform", plan.dst_transform.to_tuple())
-                .unwrap();
-            dict.set_item("dst_tile_shape", plan.dst_tile_shape)
-                .unwrap();
-            dict.set_item("has_data", plan.has_data).unwrap();
-            dict.into_any().unbind()
+            dict.set_item("dst_slice", plan.dst_slice)?;
+            dict.set_item("src_slice", plan.src_slice)?;
+            dict.set_item("src_transform", plan.src_transform.to_tuple())?;
+            dict.set_item("dst_transform", plan.dst_transform.to_tuple())?;
+            dict.set_item("dst_tile_shape", plan.dst_tile_shape)?;
+            dict.set_item("has_data", plan.has_data)?;
+            Ok(dict.into_any().unbind())
         })
-        .collect();
+        .collect::<PyResult<Vec<_>>>()?;
 
     Ok(result)
 }
