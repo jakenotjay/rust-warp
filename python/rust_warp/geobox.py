@@ -58,11 +58,33 @@ def _extract_crs(obj) -> str:
         if "epsg" in sr.attrs:
             return f"EPSG:{sr.attrs['epsg']}"
         if "crs_wkt" in sr.attrs:
-            return str(sr.attrs["crs_wkt"])
+            # Try to recover the EPSG code from WKT via pyproj, since the
+            # Rust proj4rs backend cannot parse raw WKT strings.
+            wkt = str(sr.attrs["crs_wkt"])
+            try:
+                from pyproj import CRS as PyprojCRS
+
+                epsg = PyprojCRS.from_wkt(wkt).to_epsg()
+                if epsg is not None:
+                    return f"EPSG:{epsg}"
+            except Exception:
+                pass
+            return wkt
 
     # Check attrs
     if "crs" in obj.attrs:
-        return str(obj.attrs["crs"])
+        crs_val = str(obj.attrs["crs"])
+        # If it looks like WKT, try to extract EPSG via pyproj
+        if crs_val.startswith(("PROJCRS[", "GEOGCRS[", "COMPOUNDCRS[")):
+            try:
+                from pyproj import CRS as PyprojCRS
+
+                epsg = PyprojCRS.from_wkt(crs_val).to_epsg()
+                if epsg is not None:
+                    return f"EPSG:{epsg}"
+            except Exception:
+                pass
+        return crs_val
 
     raise ValueError(
         "Cannot determine CRS. Set a 'spatial_ref' coordinate with 'crs_wkt' attr, "

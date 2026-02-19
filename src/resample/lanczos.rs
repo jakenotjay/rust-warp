@@ -93,7 +93,9 @@ fn lanczos_weight(t: f64) -> f64 {
 /// Corner-to-center conversion (-0.5 offset), anchor at `floor()`.
 /// Weights are normalized to sum to 1.0.
 ///
-/// Returns `None` if any of the 36 neighbors is out of bounds, nodata, or NaN.
+/// At edges, dynamically shrinks the kernel to include only in-bounds
+/// pixels and renormalizes weights (matching GDAL behavior).
+/// Returns `None` if no valid pixels contribute.
 pub fn sample<T>(src: &ArrayView2<'_, T>, x: f64, y: f64, nodata: Option<T>) -> Option<T>
 where
     T: Copy + NumCast + PartialEq,
@@ -107,48 +109,50 @@ where
 
     let (rows, cols) = (src.nrows() as isize, src.ncols() as isize);
 
-    // Check bounds for 6×6 neighborhood: offsets -2..+3
-    if ix - 2 < 0 || ix + 3 >= cols || iy - 2 < 0 || iy + 3 >= rows {
-        return None;
-    }
-
     let dx = cx - ix as f64;
     let dy = cy - iy as f64;
 
-    // Compute 1D weights and normalize
-    let mut wx = [0.0_f64; 6];
-    let mut wy = [0.0_f64; 6];
-    for (k, offset) in (-2..=3_isize).enumerate() {
-        wx[k] = lanczos_weight(dx - offset as f64);
-        wy[k] = lanczos_weight(dy - offset as f64);
-    }
+    // Determine effective kernel bounds, clamping to source extent.
+    // Full kernel: offsets -2..+3 (6 taps). At edges, shrink.
+    let j_min = (-2_isize).max(-iy);
+    let j_max = (3_isize).min(rows - 1 - iy);
+    let i_min = (-2_isize).max(-ix);
+    let i_max = (3_isize).min(cols - 1 - ix);
 
-    let sum_wx: f64 = wx.iter().sum();
-    let sum_wy: f64 = wy.iter().sum();
-    if sum_wx.abs() < 1e-15 || sum_wy.abs() < 1e-15 {
+    if j_min > j_max || i_min > i_max {
         return None;
     }
-    for w in &mut wx {
-        *w /= sum_wx;
-    }
-    for w in &mut wy {
-        *w /= sum_wy;
-    }
 
-    let mut result = 0.0;
-    for (jk, j) in (-2..=3_isize).enumerate() {
-        for (ik, i) in (-2..=3_isize).enumerate() {
+    // Accumulate with weight tracking for renormalization
+    let mut accum = 0.0_f64;
+    let mut weight_sum = 0.0_f64;
+
+    for j in j_min..=j_max {
+        let wy = lanczos_weight(dy - j as f64);
+
+        for i in i_min..=i_max {
             let val = src[((iy + j) as usize, (ix + i) as usize)];
             if is_nodata_value(val, nodata) {
-                return None;
+                continue;
             }
 
-            let fval: f64 = NumCast::from(val)?;
-            result += wx[ik] * wy[jk] * fval;
+            let fval: f64 = match NumCast::from(val) {
+                Some(f) => f,
+                None => continue,
+            };
+
+            let wx = lanczos_weight(dx - i as f64);
+            let w = wx * wy;
+            accum += w * fval;
+            weight_sum += w;
         }
     }
 
-    NumCast::from(result)
+    if weight_sum.abs() < 1e-10 {
+        return None;
+    }
+
+    NumCast::from(accum / weight_sum)
 }
 
 #[cfg(test)]
@@ -267,12 +271,18 @@ mod tests {
 
     #[test]
     fn test_out_of_bounds() {
-        // 6×6 grid — no valid interior with lanczos radius 3
+        // 6×6 constant grid — lanczos kernel shrinks at edges, should still work
         let arr = Array2::from_elem((6, 6), 1.0_f64);
         let view = arr.view();
 
-        assert!(sample::<f64>(&view, 0.5, 0.5, None).is_none());
-        assert!(sample::<f64>(&view, 3.5, 3.5, None).is_none());
+        // At edges, kernel is shrunk and renormalized — constant field = 1.0
+        let val = sample::<f64>(&view, 0.5, 0.5, None).unwrap();
+        assert_relative_eq!(val, 1.0, epsilon = 1e-6);
+        let val = sample::<f64>(&view, 3.5, 3.5, None).unwrap();
+        assert_relative_eq!(val, 1.0, epsilon = 1e-6);
+        // Well outside — None
+        assert!(sample::<f64>(&view, -3.0, 0.5, None).is_none());
+        assert!(sample::<f64>(&view, 0.5, -3.0, None).is_none());
     }
 
     #[test]

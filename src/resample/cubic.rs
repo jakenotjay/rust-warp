@@ -31,7 +31,9 @@ fn cubic_weight(t: f64) -> f64 {
 /// Uses a 4×4 neighborhood centered on the sample point.
 /// Corner-to-center conversion (-0.5 offset), anchor at `floor()`.
 ///
-/// Returns `None` if any of the 16 neighbors is out of bounds, nodata, or NaN.
+/// At edges where the 4×4 kernel doesn't fit, falls back to bilinear
+/// interpolation (matching GDAL's GWKCubicResample behavior).
+/// Returns `None` if no valid pixels contribute.
 pub fn sample<T>(src: &ArrayView2<'_, T>, x: f64, y: f64, nodata: Option<T>) -> Option<T>
 where
     T: Copy + NumCast + PartialEq,
@@ -47,7 +49,8 @@ where
 
     // Check bounds for 4×4 neighborhood: offsets -1..+2
     if ix - 1 < 0 || ix + 2 >= cols || iy - 1 < 0 || iy + 2 >= rows {
-        return None;
+        // Fall back to bilinear at edges (matches GDAL behavior)
+        return super::bilinear::sample(src, x, y, nodata);
     }
 
     let dx = cx - ix as f64;
@@ -63,7 +66,8 @@ where
         for (ik, i) in (-1..=2_isize).enumerate() {
             let val = src[((iy + j) as usize, (ix + i) as usize)];
             if is_nodata_value(val, nodata) {
-                return None;
+                // GDAL falls back to bilinear if any cubic neighbor is nodata
+                return super::bilinear::sample(src, x, y, nodata);
             }
 
             let fval: f64 = NumCast::from(val)?;
@@ -176,10 +180,13 @@ mod tests {
         ];
         let view = arr.view();
 
-        // 4×4 grid with cubic (radius 2) — no interior pixel can be sampled
-        // because the 4×4 neighborhood always reaches out of bounds
-        assert!(sample::<f64>(&view, 0.5, 0.5, None).is_none());
-        assert!(sample::<f64>(&view, 2.5, 2.5, None).is_none());
+        // 4×4 grid: cubic can't fit its 4×4 kernel, so falls back to bilinear.
+        // Edge coordinates should produce valid bilinear results.
+        assert!(sample::<f64>(&view, 0.5, 0.5, None).is_some());
+        assert!(sample::<f64>(&view, 2.5, 2.5, None).is_some());
+        // Well outside — None
+        assert!(sample::<f64>(&view, -1.0, 0.5, None).is_none());
+        assert!(sample::<f64>(&view, 0.5, -1.0, None).is_none());
     }
 
     #[test]

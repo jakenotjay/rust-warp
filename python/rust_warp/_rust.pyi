@@ -17,7 +17,7 @@ def reproject_array(
 ) -> NDArray[Any]:
     """Reproject a 2D array from one CRS to another.
 
-    Supports multiple dtypes: float32, float64, uint8, uint16, int16.
+    Supports multiple dtypes: float32, float64, uint8, uint16, int16, int8.
     Output dtype matches input dtype.
 
     Args:
@@ -52,6 +52,54 @@ def transform_points(
 
     Returns:
         Tuple of (x_out, y_out) arrays in the destination CRS.
+    """
+    ...
+
+def transform_grid(
+    src_crs: str,
+    src_transform: tuple[float, float, float, float, float, float],
+    dst_crs: str,
+    dst_transform: tuple[float, float, float, float, float, float],
+    dst_shape: tuple[int, int],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Compute source pixel coordinate grids for a reprojection.
+
+    For each destination pixel, computes the corresponding source pixel
+    coordinates using the same transform chain as reproject_array.
+
+    Args:
+        src_crs: Source CRS string.
+        src_transform: Source affine transform as 6-element tuple.
+        dst_crs: Destination CRS string.
+        dst_transform: Destination affine transform as 6-element tuple.
+        dst_shape: Output shape as (rows, cols) tuple.
+
+    Returns:
+        Tuple of (src_col_grid, src_row_grid) — two 2D float64 arrays.
+    """
+    ...
+
+def reproject_with_grid(
+    src: NDArray[Any],
+    src_col_grid: NDArray[np.float64],
+    src_row_grid: NDArray[np.float64],
+    resampling: str = "nearest",
+    nodata: float | None = None,
+) -> NDArray[Any]:
+    """Reproject using pre-computed source pixel coordinate grids.
+
+    Samples the source array at the given source pixel coordinates,
+    bypassing projection entirely. Tests only the resampling kernel.
+
+    Args:
+        src: Input 2D numpy array.
+        src_col_grid: 2D float64 array of source column coordinates.
+        src_row_grid: 2D float64 array of source row coordinates.
+        resampling: Resampling method name.
+        nodata: Optional nodata value.
+
+    Returns:
+        Resampled 2D array with same dtype as input.
     """
     ...
 

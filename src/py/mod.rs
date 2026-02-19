@@ -8,6 +8,8 @@ mod transform;
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(hello, m)?)?;
     m.add_function(wrap_pyfunction!(reproject::reproject_array, m)?)?;
+    m.add_function(wrap_pyfunction!(reproject::transform_grid, m)?)?;
+    m.add_function(wrap_pyfunction!(reproject::reproject_with_grid, m)?)?;
     m.add_function(wrap_pyfunction!(transform::transform_points, m)?)?;
     m.add_function(wrap_pyfunction!(plan::plan_reproject, m)?)?;
     Ok(())

@@ -40,9 +40,11 @@ class TestMultiZone:
             src, src_crs, src_transform, central_lon = self._make_zone_raster(zone)
 
             # Common destination covering all three zones
+            # Zone 32 ≈ 9°E, zone 33 ≈ 15°E, zone 34 ≈ 21°E
+            # Grid: 6°E to 24°E (1800 px), 53°N to 55°N (200 px)
             dst_crs = "EPSG:4326"
-            dst_transform = (0.01, 0.0, 3.0, 0.0, -0.01, 55.0)
-            dst_shape = (200, 600)
+            dst_transform = (0.01, 0.0, 6.0, 0.0, -0.01, 55.0)
+            dst_shape = (200, 1800)
 
             result = reproject_array(
                 src, src_crs, src_transform,
@@ -85,9 +87,10 @@ class TestMultiZone:
         src_b = (r + c).astype(np.float32)
 
         dst_crs = "EPSG:4326"
-        # Cover the boundary between zone 33 (15°E) and zone 34 (21°E)
+        # Cover both zone 33 (~15°E) and zone 34 (~21°E) rasters
+        # Grid: 14°E to 22°E (1600 px), 53°N to 54°N (200 px)
         dst_transform = (0.005, 0.0, 14.0, 0.0, -0.005, 55.0)
-        dst_shape = (200, 400)
+        dst_shape = (200, 1600)
 
         result_a = reproject_array(
             src_a, crs_a, tf_a, dst_crs, dst_transform, dst_shape,

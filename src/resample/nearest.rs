@@ -15,12 +15,25 @@ pub fn sample<T>(src: &ArrayView2<'_, T>, x: f64, y: f64, nodata: Option<T>) -> 
 where
     T: Copy + NumCast + PartialEq,
 {
-    let col = x.floor() as isize;
-    let row = y.floor() as isize;
-
     let (rows, cols) = (src.nrows() as isize, src.ncols() as isize);
-    if col < 0 || col >= cols || row < 0 || row >= rows {
+
+    // Reject coordinates well outside the raster (matching GDAL pre-check)
+    if x < 0.0 || x > cols as f64 || y < 0.0 || y > rows as f64 {
         return None;
+    }
+
+    // Add small epsilon before floor to match GDAL rounding behavior.
+    // This prevents asymmetric truncation at pixel boundaries:
+    // e.g. x=0.9999999999 should round to pixel 1, not pixel 0.
+    let mut col = (x + 1e-10).floor() as isize;
+    let mut row = (y + 1e-10).floor() as isize;
+
+    // Clamp to edge if exactly at raster boundary (matches GDAL behavior)
+    if col >= cols {
+        col = cols - 1;
+    }
+    if row >= rows {
+        row = rows - 1;
     }
 
     let val = src[(row as usize, col as usize)];
@@ -70,8 +83,12 @@ mod tests {
 
         assert_eq!(sample::<f64>(&view, -0.1, 0.5, None), None);
         assert_eq!(sample::<f64>(&view, 0.5, -0.1, None), None);
-        assert_eq!(sample::<f64>(&view, 2.0, 0.5, None), None);
-        assert_eq!(sample::<f64>(&view, 0.5, 2.0, None), None);
+        // At exactly x=2.0 (right boundary), clamped to last col (matches GDAL)
+        assert_eq!(sample::<f64>(&view, 2.0, 0.5, None), Some(2.0));
+        assert_eq!(sample::<f64>(&view, 0.5, 2.0, None), Some(3.0));
+        // Beyond the boundary — still None
+        assert_eq!(sample::<f64>(&view, 2.1, 0.5, None), None);
+        assert_eq!(sample::<f64>(&view, 0.5, 2.1, None), None);
     }
 
     #[test]

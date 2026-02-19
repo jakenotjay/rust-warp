@@ -45,19 +45,18 @@ def _crs_pair_id(pair):
 # Tolerance definitions
 # ---------------------------------------------------------------------------
 
-# Nearest: we expect >98% exact match due to sub-pixel projection differences
-# Interpolating kernels: tighter than previous atol=10.0
+# Nearest: we expect >92% exact match due to sub-pixel projection differences
+# Interpolating kernels: tight tolerances based on measured boundary handling differences
 TOLERANCES = {
     # Nearest uses _assert_nearest_match (>90% exact match)
     "nearest": {"atol": 0.0, "rtol": 0.0},
     # Interpolating kernels: edge pixels dominate max error due to boundary handling
-    # differences between rust-warp and GDAL. proj4rs vs PROJ coordinate differences
-    # also contribute ~0.1-1px shifts. Mean error is typically <3, but edge pixels
-    # at CRS boundaries can push max_abs_error to ~12. This is acceptable since
-    # it only affects a tiny fraction of pixels.
-    "bilinear": {"atol": 15.0, "rtol": 0.01},
-    "cubic": {"atol": 15.0, "rtol": 0.01},
-    "lanczos": {"atol": 15.0, "rtol": 0.01},
+    # differences between rust-warp and GDAL. Coordinate differences are <0.12px.
+    # Boundary pixels where partial kernel evaluation differs cause max errors of ~2-3.
+    # Mean error is typically <1.
+    "bilinear": {"atol": 3.0, "rtol": 0.01},
+    "cubic": {"atol": 2.0, "rtol": 0.01},
+    "lanczos": {"atol": 2.5, "rtol": 0.01},
     "average": {"atol": 15.0, "rtol": 0.05},
 }
 
