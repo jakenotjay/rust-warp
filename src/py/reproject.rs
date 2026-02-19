@@ -25,7 +25,7 @@ fn reproject_typed<T>(
     method: ResamplingMethod,
 ) -> PyResult<PyObject>
 where
-    T: numpy::Element + Copy + NumCast + PartialEq + Default + Send,
+    T: numpy::Element + Copy + NumCast + PartialEq + Default + Send + Sync,
 {
     let typed = src.downcast::<PyArray2<T>>()?;
     let src_array: Array2<T> = typed.readonly().as_array().to_owned();

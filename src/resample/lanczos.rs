@@ -1,6 +1,8 @@
 //! Lanczos sinc-windowed resampling kernel (a = 3).
 //!
 //! Uses a 6×6 neighborhood with normalized sinc weights.
+//! The weight function uses a fast polynomial approximation of sin(πt)
+//! to avoid transcendental function calls.
 
 use ndarray::ArrayView2;
 use num_traits::NumCast;
@@ -8,6 +10,8 @@ use num_traits::NumCast;
 use super::is_nodata_value;
 
 /// Normalized sinc function: sinc(x) = sin(πx) / (πx), sinc(0) = 1.
+/// Kept as reference for tests.
+#[cfg(test)]
 fn sinc(x: f64) -> f64 {
     if x.abs() < 1e-12 {
         1.0
@@ -17,8 +21,9 @@ fn sinc(x: f64) -> f64 {
     }
 }
 
-/// Lanczos weight function: L(t) = sinc(t) * sinc(t/a) for |t| < a, else 0.
-fn lanczos_weight(t: f64) -> f64 {
+/// Exact Lanczos weight (reference implementation for tests).
+#[cfg(test)]
+fn lanczos_weight_exact(t: f64) -> f64 {
     const A: f64 = 3.0;
     let t = t.abs();
     if t < A {
@@ -26,6 +31,60 @@ fn lanczos_weight(t: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+/// Polynomial approximation of sin(x) for x ∈ [0, π/2].
+/// Degree-11 Taylor series: sin(x) = x(1 - x²/6 + x⁴/120 - x⁶/5040 + x⁸/362880 - x¹⁰/39916800).
+/// Max absolute error at x = π/2: ~6e-8.
+#[inline(always)]
+fn sin_kernel(x: f64) -> f64 {
+    let x2 = x * x;
+    x * (1.0
+        + x2 * (-1.666_666_666_666_666_6e-1
+            + x2 * (8.333_333_333_333_333e-3
+                + x2 * (-1.984_126_984_126_984e-4
+                    + x2 * (2.755_731_922_398_589_3e-6 + x2 * (-2.505_210_838_544_171_8e-8))))))
+}
+
+/// Fast Lanczos-3 weight using polynomial sin(π·) approximation.
+///
+/// Computes L(t) = sinc(t) * sinc(t/3) = 3·sin(πt)·sin(πt/3) / (π²t²)
+/// using range reduction and a degree-11 polynomial for sin.
+/// Max error vs exact: < 1e-6 (dominated by sin polynomial truncation).
+#[inline(always)]
+fn lanczos_weight(t: f64) -> f64 {
+    let t = t.abs();
+    if t >= 3.0 {
+        return 0.0;
+    }
+    if t < 1e-12 {
+        return 1.0;
+    }
+
+    // sin(πt) for t ∈ (0, 3) via range reduction.
+    // floor(t) ∈ {0, 1, 2}; sin(πt) = (-1)^n * sin(π·frac)
+    let sin_pit = {
+        let n = t as u32;
+        let f = t - n as f64;
+        let fh = if f > 0.5 { 1.0 - f } else { f };
+        let s = sin_kernel(std::f64::consts::PI * fh);
+        if n == 1 {
+            -s
+        } else {
+            s
+        }
+    };
+
+    // sin(πt/3) for t/3 ∈ (0, 1) — always in first half-period.
+    let sin_pit3 = {
+        let u = t * (1.0 / 3.0);
+        let uh = if u > 0.5 { 1.0 - u } else { u };
+        sin_kernel(std::f64::consts::PI * uh)
+    };
+
+    // L(t) = sinc(t) * sinc(t/3) = sin(πt)/(πt) * sin(πt/3)/(πt/3)
+    //       = 3 * sin(πt) * sin(πt/3) / (π² * t²)
+    3.0 * sin_pit * sin_pit3 / (std::f64::consts::PI * std::f64::consts::PI * t * t)
 }
 
 /// Sample a 2D array using Lanczos interpolation (a=3).
@@ -113,7 +172,7 @@ mod tests {
 
     #[test]
     fn test_lanczos_weight_at_zero() {
-        assert_relative_eq!(lanczos_weight(0.0), 1.0, epsilon = 1e-12);
+        assert_relative_eq!(lanczos_weight(0.0), 1.0, epsilon = 1e-7);
     }
 
     #[test]
@@ -131,8 +190,26 @@ mod tests {
     #[test]
     fn test_lanczos_weight_symmetry() {
         for &t in &[0.3, 1.0, 1.5, 2.7] {
-            assert_relative_eq!(lanczos_weight(t), lanczos_weight(-t), epsilon = 1e-12);
+            assert_relative_eq!(lanczos_weight(t), lanczos_weight(-t), epsilon = 1e-7);
         }
+    }
+
+    #[test]
+    fn test_fast_lanczos_matches_exact() {
+        // Validate polynomial sin approximation against exact sinc at 10k points
+        let n = 10_000;
+        let mut max_err = 0.0_f64;
+        for i in 0..n {
+            let t = (i as f64 / n as f64) * 6.0 - 3.0; // t in [-3, 3]
+            let exact = lanczos_weight_exact(t);
+            let fast = lanczos_weight(t);
+            let err = (exact - fast).abs();
+            max_err = max_err.max(err);
+        }
+        assert!(
+            max_err < 1e-6,
+            "max error between fast and exact Lanczos: {max_err:.2e} (want < 1e-6)"
+        );
     }
 
     #[test]

@@ -53,19 +53,21 @@ where
     let dx = cx - ix as f64;
     let dy = cy - iy as f64;
 
-    let mut result = 0.0;
-    for j in -1..=2_isize {
-        let wy = cubic_weight(dy - j as f64);
-        for i in -1..=2_isize {
-            let wx = cubic_weight(dx - i as f64);
+    // Precompute 1D weight arrays to reduce cubic_weight calls from 16 to 8
+    let wx: [f64; 4] = std::array::from_fn(|k| cubic_weight(dx - (k as f64 - 1.0)));
+    let wy: [f64; 4] = std::array::from_fn(|k| cubic_weight(dy - (k as f64 - 1.0)));
 
+    let mut result = 0.0;
+    for (jk, j) in (-1..=2_isize).enumerate() {
+        let w_row = wy[jk];
+        for (ik, i) in (-1..=2_isize).enumerate() {
             let val = src[((iy + j) as usize, (ix + i) as usize)];
             if is_nodata_value(val, nodata) {
                 return None;
             }
 
             let fval: f64 = NumCast::from(val)?;
-            result += wx * wy * fval;
+            result += wx[ik] * w_row * fval;
         }
     }
 

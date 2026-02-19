@@ -55,14 +55,20 @@ where
         return None;
     }
 
+    // Precompute y-overlap weights to avoid redundant max/min in inner loop
+    let oy_weights: Vec<f64> = (y_min..y_max)
+        .map(|iy| {
+            let lo = (iy as f64).max(cy - hy);
+            let hi = ((iy + 1) as f64).min(cy + hy);
+            (hi - lo).max(0.0)
+        })
+        .collect();
+
     let mut weighted_sum = 0.0_f64;
     let mut total_weight = 0.0_f64;
 
-    for iy in y_min..y_max {
-        // Overlap in y: intersection of [iy, iy+1] with [cy-hy, cy+hy]
-        let oy_lo = (iy as f64).max(cy - hy);
-        let oy_hi = ((iy + 1) as f64).min(cy + hy);
-        let oy = (oy_hi - oy_lo).max(0.0);
+    for (yi, iy) in (y_min..y_max).enumerate() {
+        let oy = oy_weights[yi];
 
         for ix in x_min..x_max {
             let val = src[(iy as usize, ix as usize)];

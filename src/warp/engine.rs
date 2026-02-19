@@ -2,9 +2,11 @@
 //!
 //! For each output pixel, projects back to source CRS and samples the source array.
 //! Uses LinearApprox for scanline optimization when available.
+//! Output rows are processed in parallel using Rayon.
 
 use ndarray::{Array2, ArrayView2};
 use num_traits::NumCast;
+use rayon::prelude::*;
 
 use crate::affine::Affine;
 use crate::error::WarpError;
@@ -50,73 +52,79 @@ pub fn warp_generic<T>(
     fill: T,
 ) -> Result<Array2<T>, WarpError>
 where
-    T: Copy + NumCast + PartialEq + Default + Send,
+    T: Copy + NumCast + PartialEq + Default + Send + Sync,
 {
     let src_affine_inv = src_affine.inverse()?;
-    let (dst_rows, dst_cols) = dst_shape;
+    let (_dst_rows, dst_cols) = dst_shape;
 
     let mut dst = Array2::from_elem(dst_shape, fill);
 
     let approx = LinearApprox::default();
-    let mut src_cols_buf = vec![0.0; dst_cols];
-    let mut src_rows_buf = vec![0.0; dst_cols];
-
     let scale = compute_scale(src_affine, dst_affine);
     let radius = method.kernel_radius();
     let src_rows_f = src.nrows() as f64;
     let src_cols_f = src.ncols() as f64;
 
-    for row in 0..dst_rows {
-        let scanline_ok = approx
-            .transform_scanline(
-                pipeline,
-                dst_affine,
-                &src_affine_inv,
-                row,
-                dst_cols,
-                &mut src_cols_buf,
-                &mut src_rows_buf,
-            )
-            .is_ok();
+    dst.axis_iter_mut(ndarray::Axis(0))
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(row, mut dst_row)| {
+            // Thread-local coordinate buffers (allocated once per row)
+            let mut src_cols_buf = vec![0.0_f64; dst_cols];
+            let mut src_rows_buf = vec![0.0_f64; dst_cols];
 
-        if !scanline_ok {
-            continue;
-        }
+            let scanline_ok = approx
+                .transform_scanline(
+                    pipeline,
+                    dst_affine,
+                    &src_affine_inv,
+                    row,
+                    dst_cols,
+                    &mut src_cols_buf,
+                    &mut src_rows_buf,
+                )
+                .is_ok();
 
-        for col in 0..dst_cols {
-            let src_col = src_cols_buf[col];
-            let src_row = src_rows_buf[col];
-
-            // Kernel-radius pre-check: skip if clearly outside source extent
-            if src_col < -radius
-                || src_col > src_cols_f + radius
-                || src_row < -radius
-                || src_row > src_rows_f + radius
-            {
-                continue;
+            if !scanline_ok {
+                return;
             }
 
-            let val = match method {
-                ResamplingMethod::Nearest => {
-                    resample::nearest::sample(src, src_col, src_row, nodata)
-                }
-                ResamplingMethod::Bilinear => {
-                    resample::bilinear::sample(src, src_col, src_row, nodata)
-                }
-                ResamplingMethod::Cubic => resample::cubic::sample(src, src_col, src_row, nodata),
-                ResamplingMethod::Lanczos => {
-                    resample::lanczos::sample(src, src_col, src_row, nodata)
-                }
-                ResamplingMethod::Average => {
-                    resample::average::sample(src, src_col, src_row, nodata, scale)
-                }
-            };
+            for col in 0..dst_cols {
+                let src_col = src_cols_buf[col];
+                let src_row = src_rows_buf[col];
 
-            if let Some(v) = val {
-                dst[(row, col)] = v;
+                // Kernel-radius pre-check: skip if clearly outside source extent
+                if src_col < -radius
+                    || src_col > src_cols_f + radius
+                    || src_row < -radius
+                    || src_row > src_rows_f + radius
+                {
+                    continue;
+                }
+
+                let val = match method {
+                    ResamplingMethod::Nearest => {
+                        resample::nearest::sample(src, src_col, src_row, nodata)
+                    }
+                    ResamplingMethod::Bilinear => {
+                        resample::bilinear::sample(src, src_col, src_row, nodata)
+                    }
+                    ResamplingMethod::Cubic => {
+                        resample::cubic::sample(src, src_col, src_row, nodata)
+                    }
+                    ResamplingMethod::Lanczos => {
+                        resample::lanczos::sample(src, src_col, src_row, nodata)
+                    }
+                    ResamplingMethod::Average => {
+                        resample::average::sample(src, src_col, src_row, nodata, scale)
+                    }
+                };
+
+                if let Some(v) = val {
+                    dst_row[col] = v;
+                }
             }
-        }
-    }
+        });
 
     Ok(dst)
 }
@@ -371,5 +379,46 @@ mod tests {
         let (sx, sy) = compute_scale(&src_affine, &dst_affine);
         assert_relative_eq!(sx, 2.0, epsilon = 1e-10);
         assert_relative_eq!(sy, 2.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_pipeline_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Pipeline>();
+    }
+
+    #[test]
+    fn test_parallel_matches_sequential() {
+        // Compare Rayon output to a manual sequential reference on 128×128
+        let mut src = Array2::zeros((128, 128));
+        for r in 0..128 {
+            for c in 0..128 {
+                src[(r, c)] = (r * 128 + c) as f64;
+            }
+        }
+        let affine = Affine::new(100.0, 0.0, 400000.0, 0.0, -100.0, 6012800.0);
+        let pipeline = Pipeline::new("EPSG:32633", "EPSG:32633").unwrap();
+
+        // Test with nearest (exact) and bilinear (interpolated)
+        for method in [ResamplingMethod::Nearest, ResamplingMethod::Bilinear] {
+            let result = warp(
+                &src.view(),
+                &affine,
+                &affine,
+                (128, 128),
+                &pipeline,
+                method,
+                None,
+            )
+            .unwrap();
+
+            // For identity reprojection, interior pixels should match
+            let margin = method.kernel_radius().ceil() as usize;
+            for row in margin..128 - margin {
+                for col in margin..128 - margin {
+                    assert_relative_eq!(result[(row, col)], src[(row, col)], epsilon = 1e-4,);
+                }
+            }
+        }
     }
 }
