@@ -6,6 +6,69 @@ from dataclasses import dataclass
 
 import numpy as np
 
+_SPATIAL_Y_NAMES = ("y", "latitude", "lat")
+_SPATIAL_X_NAMES = ("x", "longitude", "lon")
+
+
+def _find_spatial_dims(obj) -> tuple[str, str]:
+    """Detect spatial (y, x) dimension names from an xarray object.
+
+    Checks dim names against known spatial names. Falls back to the last two
+    dimensions if no known names match.
+
+    Returns:
+        Tuple of (y_dim, x_dim).
+
+    Raises:
+        ValueError: If spatial dimensions cannot be determined.
+    """
+    dims = list(obj.dims)
+    if len(dims) < 2:
+        raise ValueError(
+            f"Need at least 2 dimensions, got {len(dims)}: {dims}"
+        )
+
+    # Check known spatial names
+    for y_name in _SPATIAL_Y_NAMES:
+        for x_name in _SPATIAL_X_NAMES:
+            if y_name in dims and x_name in dims:
+                return (y_name, x_name)
+
+    # Fall back to last two dims
+    return (dims[-2], dims[-1])
+
+
+def _extract_crs(obj) -> str:
+    """Extract CRS string from an xarray object.
+
+    Priority:
+    1. coords["spatial_ref"].attrs["crs_wkt"]
+    2. obj.attrs["crs"]
+
+    Returns:
+        CRS string.
+
+    Raises:
+        ValueError: If no CRS can be found.
+    """
+    # Check spatial_ref coordinate
+    if "spatial_ref" in obj.coords:
+        sr = obj.coords["spatial_ref"]
+        # Prefer EPSG code for compact, round-trippable representation
+        if "epsg" in sr.attrs:
+            return f"EPSG:{sr.attrs['epsg']}"
+        if "crs_wkt" in sr.attrs:
+            return str(sr.attrs["crs_wkt"])
+
+    # Check attrs
+    if "crs" in obj.attrs:
+        return str(obj.attrs["crs"])
+
+    raise ValueError(
+        "Cannot determine CRS. Set a 'spatial_ref' coordinate with 'crs_wkt' attr, "
+        "or set attrs['crs'] on the object."
+    )
+
 
 @dataclass(frozen=True)
 class GeoBox:
@@ -85,6 +148,55 @@ class GeoBox:
     def resolution(self) -> tuple[float, float]:
         """Pixel resolution as (res_x, res_y), both positive."""
         return (abs(self.affine[0]), abs(self.affine[4]))
+
+    @classmethod
+    def from_xarray(cls, obj) -> GeoBox:
+        """Create a GeoBox from an xarray DataArray or Dataset.
+
+        Extracts CRS, affine transform, and shape from coordinate metadata.
+
+        Args:
+            obj: An xarray DataArray or Dataset with spatial coordinates.
+
+        Returns:
+            A new GeoBox instance.
+
+        Raises:
+            ValueError: If CRS or spatial dimensions cannot be determined.
+        """
+        y_dim, x_dim = _find_spatial_dims(obj)
+        crs = _extract_crs(obj)
+
+        x = obj.coords[x_dim].values
+        y = obj.coords[y_dim].values
+
+        if len(x) < 2 or len(y) < 2:
+            raise ValueError("Need at least 2 points in each spatial dimension")
+
+        res_x = float(x[1] - x[0])
+        res_y = float(y[1] - y[0])
+        origin_x = float(x[0]) - res_x / 2  # pixel-center → top-left corner
+        origin_y = float(y[0]) - res_y / 2
+
+        affine = (res_x, 0.0, origin_x, 0.0, res_y, origin_y)
+        shape = (len(y), len(x))
+        return cls(crs=crs, shape=shape, affine=affine)
+
+    @classmethod
+    def from_odc(cls, gbox) -> GeoBox:
+        """Create from an odc-geo GeoBox.
+
+        Args:
+            gbox: An odc.geo.geobox.GeoBox instance.
+
+        Returns:
+            A new GeoBox instance.
+        """
+        crs = str(gbox.crs)
+        shape = (gbox.shape.y, gbox.shape.x)
+        a = gbox.affine
+        affine = (a.a, a.b, a.c, a.d, a.e, a.f)
+        return cls(crs=crs, shape=shape, affine=affine)
 
     def xr_coords(self) -> dict[str, np.ndarray]:
         """Coordinate arrays for xarray DataArray construction.

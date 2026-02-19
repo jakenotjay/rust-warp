@@ -12,3 +12,8 @@ __all__ = [
     "GeoBox",
     "reproject",
 ]
+
+try:
+    import rust_warp.xarray_accessor  # noqa: F401
+except ImportError:
+    pass  # xarray not installed
