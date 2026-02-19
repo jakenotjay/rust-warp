@@ -443,9 +443,14 @@ class TestMultiDtype:
 
 
 class TestPlanReproject:
-    """plan_reproject stub should be callable and return empty list."""
+    """plan_reproject should return tile plan dicts."""
 
-    def test_returns_empty_list(self):
+    EXPECTED_KEYS = {
+        "dst_slice", "src_slice", "src_transform", "dst_transform",
+        "dst_tile_shape", "has_data",
+    }
+
+    def test_returns_nonempty_list(self):
         result = plan_reproject(
             src_crs="EPSG:32633",
             src_transform=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
@@ -454,7 +459,9 @@ class TestPlanReproject:
             dst_transform=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
             dst_shape=(64, 64),
         )
-        assert result == []
+        assert len(result) > 0
+        for tile in result:
+            assert set(tile.keys()) == self.EXPECTED_KEYS
 
     def test_with_chunks(self):
         result = plan_reproject(
@@ -467,4 +474,6 @@ class TestPlanReproject:
             dst_chunks=(32, 32),
             resampling="nearest",
         )
-        assert result == []
+        assert len(result) == 4
+        for tile in result:
+            assert set(tile.keys()) == self.EXPECTED_KEYS

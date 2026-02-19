@@ -38,6 +38,11 @@ impl Affine {
         [self.c, self.a, self.b, self.f, self.d, self.e]
     }
 
+    /// Convert to a tuple (a, b, c, d, e, f) for Python serialization.
+    pub fn to_tuple(&self) -> (f64, f64, f64, f64, f64, f64) {
+        (self.a, self.b, self.c, self.d, self.e, self.f)
+    }
+
     /// Apply the forward transform: (col, row) -> (x, y).
     pub fn forward(&self, col: f64, row: f64) -> (f64, f64) {
         let x = self.a * col + self.b * row + self.c;

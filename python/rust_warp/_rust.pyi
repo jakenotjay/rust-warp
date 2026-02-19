@@ -67,7 +67,8 @@ def plan_reproject(
 ) -> list[dict]:
     """Plan chunk-level reprojection tasks for a raster dataset.
 
-    Stub for Phase 4 — currently returns an empty list.
+    Divides the destination grid into tiles and computes the corresponding
+    source ROI (with halo padding) for each tile.
 
     Args:
         src_crs: Source CRS string.
@@ -80,6 +81,12 @@ def plan_reproject(
         resampling: Resampling method name. Defaults to "bilinear".
 
     Returns:
-        List of chunk task dicts (currently empty).
+        List of tile plan dicts, each with keys:
+        - dst_slice: (row_start, row_end, col_start, col_end)
+        - src_slice: (row_start, row_end, col_start, col_end)
+        - src_transform: (a, b, c, d, e, f) shifted to src_slice origin
+        - dst_transform: (a, b, c, d, e, f) shifted to dst_slice origin
+        - dst_tile_shape: (rows, cols)
+        - has_data: bool
     """
     ...
