@@ -235,61 +235,62 @@ pub fn transform_grid<'py>(
     let src_crs = src_crs.to_string();
     let dst_crs = dst_crs.to_string();
 
-    let (col_grid, row_grid) = py.allow_threads(move || -> PyResult<(Array2<f64>, Array2<f64>)> {
-        let src_affine = Affine::new(
-            src_transform[0],
-            src_transform[1],
-            src_transform[2],
-            src_transform[3],
-            src_transform[4],
-            src_transform[5],
-        );
-        let dst_affine = Affine::new(
-            dst_transform[0],
-            dst_transform[1],
-            dst_transform[2],
-            dst_transform[3],
-            dst_transform[4],
-            dst_transform[5],
-        );
-        let src_affine_inv = src_affine
-            .inverse()
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let (col_grid, row_grid) =
+        py.allow_threads(move || -> PyResult<(Array2<f64>, Array2<f64>)> {
+            let src_affine = Affine::new(
+                src_transform[0],
+                src_transform[1],
+                src_transform[2],
+                src_transform[3],
+                src_transform[4],
+                src_transform[5],
+            );
+            let dst_affine = Affine::new(
+                dst_transform[0],
+                dst_transform[1],
+                dst_transform[2],
+                dst_transform[3],
+                dst_transform[4],
+                dst_transform[5],
+            );
+            let src_affine_inv = src_affine
+                .inverse()
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        let pipeline =
-            Pipeline::new(&src_crs, &dst_crs).map_err(|e| PyValueError::new_err(e.to_string()))?;
+            let pipeline = Pipeline::new(&src_crs, &dst_crs)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
 
-        let (dst_rows, dst_cols) = dst_shape;
-        let mut col_grid = Array2::from_elem(dst_shape, f64::NAN);
-        let mut row_grid = Array2::from_elem(dst_shape, f64::NAN);
+            let (dst_rows, dst_cols) = dst_shape;
+            let mut col_grid = Array2::from_elem(dst_shape, f64::NAN);
+            let mut row_grid = Array2::from_elem(dst_shape, f64::NAN);
 
-        let approx = LinearApprox::default();
+            let approx = LinearApprox::default();
 
-        for row in 0..dst_rows {
-            let mut src_cols_buf = vec![0.0_f64; dst_cols];
-            let mut src_rows_buf = vec![0.0_f64; dst_cols];
+            for row in 0..dst_rows {
+                let mut src_cols_buf = vec![0.0_f64; dst_cols];
+                let mut src_rows_buf = vec![0.0_f64; dst_cols];
 
-            if approx
-                .transform_scanline(
-                    &pipeline,
-                    &dst_affine,
-                    &src_affine_inv,
-                    row,
-                    dst_cols,
-                    &mut src_cols_buf,
-                    &mut src_rows_buf,
-                )
-                .is_ok()
-            {
-                for col in 0..dst_cols {
-                    col_grid[(row, col)] = src_cols_buf[col];
-                    row_grid[(row, col)] = src_rows_buf[col];
+                if approx
+                    .transform_scanline(
+                        &pipeline,
+                        &dst_affine,
+                        &src_affine_inv,
+                        row,
+                        dst_cols,
+                        &mut src_cols_buf,
+                        &mut src_rows_buf,
+                    )
+                    .is_ok()
+                {
+                    for col in 0..dst_cols {
+                        col_grid[(row, col)] = src_cols_buf[col];
+                        row_grid[(row, col)] = src_rows_buf[col];
+                    }
                 }
             }
-        }
 
-        Ok((col_grid, row_grid))
-    })?;
+            Ok((col_grid, row_grid))
+        })?;
 
     Ok((
         PyArray2::from_owned_array(py, col_grid),
@@ -329,22 +330,64 @@ pub fn reproject_with_grid(
     let dt = src.dtype();
 
     if dt.is_equiv_to(&numpy::dtype::<f64>(py)) {
-        return reproject_with_grid_typed::<f64>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<f64>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
     if dt.is_equiv_to(&numpy::dtype::<f32>(py)) {
-        return reproject_with_grid_typed::<f32>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<f32>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
     if dt.is_equiv_to(&numpy::dtype::<u8>(py)) {
-        return reproject_with_grid_typed::<u8>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<u8>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
     if dt.is_equiv_to(&numpy::dtype::<u16>(py)) {
-        return reproject_with_grid_typed::<u16>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<u16>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
     if dt.is_equiv_to(&numpy::dtype::<i16>(py)) {
-        return reproject_with_grid_typed::<i16>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<i16>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
     if dt.is_equiv_to(&numpy::dtype::<i8>(py)) {
-        return reproject_with_grid_typed::<i8>(py, src, &src_col_grid, &src_row_grid, method, nodata);
+        return reproject_with_grid_typed::<i8>(
+            py,
+            src,
+            &src_col_grid,
+            &src_row_grid,
+            method,
+            nodata,
+        );
     }
 
     Err(PyValueError::new_err(format!(
@@ -377,7 +420,14 @@ where
     let nodata_t: Option<T> = nodata.and_then(|nd| NumCast::from(nd));
 
     let result: Array2<T> = py.allow_threads(move || {
-        sample_with_grid(&src_array.view(), &col_grid, &row_grid, method, nodata_t, fill)
+        sample_with_grid(
+            &src_array.view(),
+            &col_grid,
+            &row_grid,
+            method,
+            nodata_t,
+            fill,
+        )
     });
 
     Ok(PyArray2::from_owned_array(py, result).into_any().unbind())
@@ -428,9 +478,7 @@ where
                 ResamplingMethod::Bilinear => {
                     resample::bilinear::sample(src, src_col, src_row, nodata)
                 }
-                ResamplingMethod::Cubic => {
-                    resample::cubic::sample(src, src_col, src_row, nodata)
-                }
+                ResamplingMethod::Cubic => resample::cubic::sample(src, src_col, src_row, nodata),
                 ResamplingMethod::Lanczos => {
                     resample::lanczos::sample(src, src_col, src_row, nodata)
                 }

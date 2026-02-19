@@ -2,8 +2,12 @@
 //! native pure-Rust projections and proj4rs fallback.
 
 use crate::error::ProjError;
+use crate::proj::albers_equal_area::AlbersEqualArea;
 use crate::proj::crs::CrsTransform;
+use crate::proj::ellipsoid::GRS80;
+use crate::proj::lambert_conformal::LambertConformalConic;
 use crate::proj::mercator::WebMercator;
+use crate::proj::stereographic::PolarStereographic;
 use crate::proj::transverse_mercator::TransverseMercator;
 use crate::proj::Projection;
 
@@ -129,6 +133,40 @@ fn parse_epsg(crs: &str) -> Option<CrsEndpoint> {
             )))
         }
 
+        // Lambert-93 (France): EPSG:2154
+        2154 => Some(CrsEndpoint::Projected(Box::new(
+            LambertConformalConic::new_2sp(
+                GRS80,
+                3.0_f64.to_radians(),  // lon0
+                46.5_f64.to_radians(), // lat0
+                44.0_f64.to_radians(), // lat1
+                49.0_f64.to_radians(), // lat2
+                700_000.0,             // false easting
+                6_600_000.0,           // false northing
+            ),
+        ))),
+
+        // CONUS Albers Equal Area: EPSG:5070
+        5070 => Some(CrsEndpoint::Projected(Box::new(AlbersEqualArea::new(
+            GRS80,
+            (-96.0_f64).to_radians(), // lon0
+            23.0_f64.to_radians(),    // lat0
+            29.5_f64.to_radians(),    // lat1
+            45.5_f64.to_radians(),    // lat2
+            0.0,                      // false easting
+            0.0,                      // false northing
+        )))),
+
+        // Antarctic Polar Stereographic: EPSG:3031
+        3031 => Some(CrsEndpoint::Projected(Box::new(
+            PolarStereographic::antarctic(),
+        ))),
+
+        // Arctic NSIDC Polar Stereographic: EPSG:3413
+        3413 => Some(CrsEndpoint::Projected(Box::new(
+            PolarStereographic::arctic(),
+        ))),
+
         _ => None,
     }
 }
@@ -201,7 +239,7 @@ mod tests {
     #[test]
     fn test_fallback_to_proj4rs() {
         // Use a CRS that's not natively supported → should fallback to proj4rs
-        let pipe = Pipeline::new("EPSG:4326", "EPSG:2154").unwrap();
+        let pipe = Pipeline::new("EPSG:4326", "EPSG:32661").unwrap();
         assert!(matches!(pipe, Pipeline::Proj4rs(_)));
     }
 
@@ -299,6 +337,122 @@ mod tests {
 
             assert_relative_eq!(x, orig.0, epsilon = 0.01);
             assert_relative_eq!(y, orig.1, epsilon = 0.01);
+        }
+    }
+
+    #[test]
+    fn test_native_lambert93() {
+        // EPSG:2154 should route to native Lambert
+        let pipe = Pipeline::new("EPSG:4326", "EPSG:2154").unwrap();
+        assert!(matches!(pipe, Pipeline::Native { .. }));
+        // Paris (lon=2.35, lat=48.86) → Lambert-93 coords
+        let (lon, lat) = pipe.transform_inv(652_000.0, 6_862_000.0).unwrap();
+        assert!(lon > 1.0 && lon < 4.0, "lon = {lon}");
+        assert!(lat > 47.0 && lat < 50.0, "lat = {lat}");
+    }
+
+    #[test]
+    fn test_native_lambert93_matches_proj4rs() {
+        let native = Pipeline::new("EPSG:4326", "EPSG:2154").unwrap();
+        let fallback = {
+            let ct = CrsTransform::new("EPSG:4326", "EPSG:2154").unwrap();
+            Pipeline::Proj4rs(Box::new(ct))
+        };
+        let test_points: &[(f64, f64)] = &[
+            (652_000.0, 6_862_000.0), // Paris area
+            (400_000.0, 6_400_000.0), // SW France
+            (900_000.0, 7_000_000.0), // NE France
+        ];
+        for &(x, y) in test_points {
+            let (lon_n, lat_n) = native.transform_inv(x, y).unwrap();
+            let (lon_p, lat_p) = fallback.transform_inv(x, y).unwrap();
+            assert_relative_eq!(lon_n, lon_p, epsilon = 1e-6);
+            assert_relative_eq!(lat_n, lat_p, epsilon = 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_native_albers_conus() {
+        // EPSG:5070 should route to native Albers
+        let pipe = Pipeline::new("EPSG:4326", "EPSG:5070").unwrap();
+        assert!(matches!(pipe, Pipeline::Native { .. }));
+        // Central US → lon ~ -96, lat ~ 39
+        let (lon, lat) = pipe.transform_inv(0.0, 1_700_000.0).unwrap();
+        assert!(lon > -100.0 && lon < -90.0, "lon = {lon}");
+        assert!(lat > 35.0 && lat < 45.0, "lat = {lat}");
+    }
+
+    #[test]
+    fn test_native_albers_matches_proj4rs() {
+        let native = Pipeline::new("EPSG:4326", "EPSG:5070").unwrap();
+        let fallback = {
+            let ct = CrsTransform::new("EPSG:4326", "EPSG:5070").unwrap();
+            Pipeline::Proj4rs(Box::new(ct))
+        };
+        let test_points: &[(f64, f64)] = &[
+            (0.0, 1_700_000.0),         // Central US
+            (-2_000_000.0, 500_000.0),  // West coast
+            (2_000_000.0, 1_500_000.0), // East coast
+        ];
+        for &(x, y) in test_points {
+            let (lon_n, lat_n) = native.transform_inv(x, y).unwrap();
+            let (lon_p, lat_p) = fallback.transform_inv(x, y).unwrap();
+            assert_relative_eq!(lon_n, lon_p, epsilon = 1e-5);
+            assert_relative_eq!(lat_n, lat_p, epsilon = 1e-5);
+        }
+    }
+
+    #[test]
+    fn test_native_polar_antarctic() {
+        // EPSG:3031 should route to native Polar Stereographic
+        let pipe = Pipeline::new("EPSG:4326", "EPSG:3031").unwrap();
+        assert!(matches!(pipe, Pipeline::Native { .. }));
+        // Origin (0, 0) in EPSG:3031 is the South Pole
+        let (_lon, lat) = pipe.transform_inv(0.0, 0.0).unwrap();
+        assert!(lat < -85.0, "lat = {lat}");
+    }
+
+    #[test]
+    fn test_native_polar_arctic() {
+        // EPSG:3413 should route to native Polar Stereographic
+        let pipe = Pipeline::new("EPSG:4326", "EPSG:3413").unwrap();
+        assert!(matches!(pipe, Pipeline::Native { .. }));
+        // Origin (0, 0) in EPSG:3413 is the North Pole
+        let (_lon, lat) = pipe.transform_inv(0.0, 0.0).unwrap();
+        assert!(lat > 85.0, "lat = {lat}");
+    }
+
+    #[test]
+    fn test_native_polar_matches_proj4rs() {
+        for (epsg, test_pts) in [
+            (
+                "EPSG:3031",
+                vec![
+                    (100_000.0, -100_000.0),
+                    (500_000.0, 500_000.0),
+                    (-300_000.0, -200_000.0),
+                ],
+            ),
+            (
+                "EPSG:3413",
+                vec![
+                    (100_000.0, -100_000.0),
+                    (300_000.0, 500_000.0),
+                    (-200_000.0, -300_000.0),
+                ],
+            ),
+        ] {
+            let native = Pipeline::new("EPSG:4326", epsg).unwrap();
+            let fallback = {
+                let ct = CrsTransform::new("EPSG:4326", epsg).unwrap();
+                Pipeline::Proj4rs(Box::new(ct))
+            };
+            for (x, y) in test_pts {
+                let (lon_n, lat_n) = native.transform_inv(x, y).unwrap();
+                let (lon_p, lat_p) = fallback.transform_inv(x, y).unwrap();
+                assert_relative_eq!(lon_n, lon_p, epsilon = 1e-6);
+                assert_relative_eq!(lat_n, lat_p, epsilon = 1e-6);
+            }
         }
     }
 }

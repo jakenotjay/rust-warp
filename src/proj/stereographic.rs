@@ -88,18 +88,20 @@ impl Projection for PolarStereographic {
     fn forward(&self, lon: f64, lat: f64) -> Result<(f64, f64), ProjError> {
         let e = self.ellipsoid.eccentricity();
 
-        let (lat_adj, sign) = if self.is_north {
-            (lat, 1.0)
-        } else {
-            (-lat, -1.0)
-        };
+        let lat_adj = if self.is_north { lat } else { -lat };
 
         let t = tsfn(lat_adj, e);
         let rho = self.akm * t;
         let dlam = lon - self.lon0;
 
-        let x = sign * rho * dlam.sin() + self.false_easting;
-        let y = -sign * rho * dlam.cos() + self.false_northing;
+        // EPSG standard: x = ρ sin(dλ) for both poles,
+        // y = -ρ cos(dλ) for north, y = ρ cos(dλ) for south
+        let x = rho * dlam.sin() + self.false_easting;
+        let y = if self.is_north {
+            -rho * dlam.cos()
+        } else {
+            rho * dlam.cos()
+        } + self.false_northing;
         Ok((x, y))
     }
 
@@ -109,13 +111,14 @@ impl Projection for PolarStereographic {
         let x_ = x - self.false_easting;
         let y_ = y - self.false_northing;
 
-        let (x_adj, y_adj) = if self.is_north { (x_, -y_) } else { (-x_, y_) };
+        // Recover dλ = atan2(x, -y) for north, atan2(x, y) for south
+        let y_adj = if self.is_north { -y_ } else { y_ };
 
-        let rho = (x_adj * x_adj + y_adj * y_adj).sqrt();
+        let rho = (x_ * x_ + y_adj * y_adj).sqrt();
         let t = rho / self.akm;
         let lat_adj = phi_from_ts(t, e);
 
-        let lon = self.lon0 + x_adj.atan2(y_adj);
+        let lon = self.lon0 + x_.atan2(y_adj);
         let lat = if self.is_north { lat_adj } else { -lat_adj };
 
         Ok((lon, lat))

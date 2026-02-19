@@ -73,3 +73,24 @@ For most scientific and geospatial workflows, the differences are **not meaningf
 
 - Expanding native projection coverage to reduce reliance on proj4rs
 - Potentially integrating PROJ directly via FFI for users who need exact GDAL compatibility (at the cost of a C dependency)
+
+## PROJ C FFI (Future Option)
+
+The [`proj`](https://crates.io/crates/proj) crate provides safe Rust bindings to the C PROJ library (libproj). This could be integrated as a third pipeline variant alongside native and proj4rs.
+
+### Design
+
+- New `Pipeline::ProjC` variant, feature-gated behind a `proj-sys` Cargo feature
+- Requires libproj installed on the system (via conda, apt, brew, or vcpkg)
+- Would be enabled with `cargo build --features proj-sys`
+
+### Performance
+
+FFI overhead is ~50-100ns per call, which is negligible when combined with rust-warp's `LinearApprox` module. The linear approximation only makes 5-15 exact projection calls per scanline (at control points), then interpolates between them. The FFI cost is amortised across thousands of pixels per scanline.
+
+### Use Cases
+
+- **NTv2 grid shifts** — datum transforms requiring grid files (e.g. NAD27→NAD83)
+- **WKT2 parsing** — CRS definitions only available as WKT2 strings
+- **Time-dependent transforms** — plate motion models, epoch-based transforms
+- **Exact GDAL compatibility** — bit-for-bit match with GDAL/rasterio output

@@ -48,12 +48,10 @@ def _reproject_from_blocks(
     sr0, sr1, sc0, sc1 = plan["src_slice"]
     assembled = np.empty((sr1 - sr0, sc1 - sc0), dtype=blocks[0].dtype)
     for block, (bi, bj) in zip(blocks, block_indices):
-        # Position in the assembled array
         ar0 = max(row_bounds[bi], sr0) - sr0
         ar1 = min(row_bounds[bi + 1], sr1) - sr0
         ac0 = max(col_bounds[bj], sc0) - sc0
         ac1 = min(col_bounds[bj + 1], sc1) - sc0
-        # Offset into the source block
         sbr0 = max(sr0 - row_bounds[bi], 0)
         sbc0 = max(sc0 - col_bounds[bj], 0)
         assembled[ar0:ar1, ac0:ac1] = block[
@@ -139,7 +137,6 @@ def reproject_dask(
     col_bounds = tuple(int(x) for x in np.cumsum((0,) + src_data.chunks[1]))
     src_keys = src_data.__dask_keys__()
 
-    # Freeze static args into the worker via partial
     proc = partial(
         _reproject_from_blocks,
         row_bounds=row_bounds,
