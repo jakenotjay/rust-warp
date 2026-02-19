@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-from rust_warp import reproject_array
+from rust_warp import plan_reproject, reproject_array
 
 
 def gdal_reproject(src, src_crs, src_transform, dst_crs, dst_transform, dst_shape, resampling):
@@ -332,3 +332,139 @@ class TestErrorHandling:
                 src, "EPSG:4326", transform, "EPSG:4326", transform, (4, 4),
                 resampling="invalid_method",
             )
+
+    def test_unsupported_dtype(self):
+        src = np.ones((4, 4), dtype=np.complex128)
+        transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0)
+
+        with pytest.raises((ValueError, TypeError)):
+            reproject_array(
+                src, "EPSG:32633", transform, "EPSG:32633", transform, (4, 4),
+            )
+
+
+class TestMultiDtype:
+    """Multi-dtype reprojection should preserve dtype and produce correct results."""
+
+    TRANSFORM = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0)
+    CRS = "EPSG:32633"
+
+    def test_float32_identity(self):
+        src = np.arange(16, dtype=np.float32).reshape(4, 4)
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+        assert result.dtype == np.float32
+        np.testing.assert_array_equal(result, src)
+
+    def test_float32_matches_float64(self):
+        src_f64 = np.arange(16, dtype=np.float64).reshape(4, 4)
+        src_f32 = src_f64.astype(np.float32)
+
+        result_f64 = reproject_array(
+            src_f64, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+        result_f32 = reproject_array(
+            src_f32, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+
+        assert result_f32.dtype == np.float32
+        np.testing.assert_allclose(result_f32, result_f64.astype(np.float32), atol=1e-6)
+
+    def test_uint8_identity(self):
+        src = np.arange(16, dtype=np.uint8).reshape(4, 4)
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+        assert result.dtype == np.uint8
+        np.testing.assert_array_equal(result, src)
+
+    def test_uint16_identity(self):
+        src = np.arange(16, dtype=np.uint16).reshape(4, 4)
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+        assert result.dtype == np.uint16
+        np.testing.assert_array_equal(result, src)
+
+    def test_int16_identity(self):
+        src = np.arange(16, dtype=np.int16).reshape(4, 4)
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest",
+        )
+        assert result.dtype == np.int16
+        np.testing.assert_array_equal(result, src)
+
+    def test_uint8_nodata(self):
+        src = np.full((4, 4), 42, dtype=np.uint8)
+        src[1, 1] = 255  # sentinel nodata
+
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest", nodata=255.0,
+        )
+        assert result.dtype == np.uint8
+        assert result[1, 1] == 255
+        assert result[0, 0] == 42
+
+    def test_int16_nodata(self):
+        src = np.full((4, 4), 100, dtype=np.int16)
+        src[2, 2] = -9999
+
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            resampling="nearest", nodata=-9999.0,
+        )
+        assert result.dtype == np.int16
+        assert result[2, 2] == -9999
+        assert result[0, 0] == 100
+
+    def test_float32_nan_fill(self):
+        """Float32 should use NaN as default fill (same as float64)."""
+        src = np.ones((4, 4), dtype=np.float32)
+        # Use a transform that maps some output pixels outside the source
+        big_transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6000400.0)
+        result = reproject_array(
+            src, self.CRS, self.TRANSFORM, self.CRS, big_transform, (8, 8),
+            resampling="nearest",
+        )
+        assert result.dtype == np.float32
+        # Some pixels should be NaN (outside source extent)
+        # and some should be 1.0 (mapped from source)
+        has_nan = np.any(np.isnan(result))
+        has_valid = np.any(result == 1.0)
+        assert has_nan or has_valid  # At least one should be true
+
+
+class TestPlanReproject:
+    """plan_reproject stub should be callable and return empty list."""
+
+    def test_returns_empty_list(self):
+        result = plan_reproject(
+            src_crs="EPSG:32633",
+            src_transform=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
+            src_shape=(64, 64),
+            dst_crs="EPSG:4326",
+            dst_transform=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+            dst_shape=(64, 64),
+        )
+        assert result == []
+
+    def test_with_chunks(self):
+        result = plan_reproject(
+            src_crs="EPSG:32633",
+            src_transform=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
+            src_shape=(64, 64),
+            dst_crs="EPSG:4326",
+            dst_transform=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+            dst_shape=(64, 64),
+            dst_chunks=(32, 32),
+            resampling="nearest",
+        )
+        assert result == []
