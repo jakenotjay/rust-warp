@@ -1,3 +1,5 @@
+This entire codebase is vibecoded with claude, mildly trust what it says - Jake
+
 # rust-warp
 
 High-performance raster reprojection engine in Rust with xarray/dask integration. A GDAL-free alternative for chunked raster reprojection.
@@ -30,7 +32,7 @@ rust-warp matches or exceeds GDAL/rasterio performance across all resampling ker
 
 *Benchmark: 1024x1024 float32, UTM zone 33N to EPSG:4326, Apple Silicon.*
 
-For dask graph construction, rust-warp builds HighLevelGraphs **11,000x faster** than the naive `dask.delayed` approach (0.024s vs 272s for a 16384x16384 source).
+For dask graph construction, rust-warp builds HighLevelGraphs in a similar manner to the odc-geo framework.
 
 See [docs/performance.md](docs/performance.md) for full benchmark details.
 
