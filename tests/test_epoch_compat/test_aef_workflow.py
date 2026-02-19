@@ -1,7 +1,7 @@
 """AEF workflow simulation tests.
 
 Simulates the epoch-mono AEF pattern: multiple UTM zones, int8 data,
-many bands, reprojected to EPSG:4326 using the .geoflux xarray accessor.
+many bands, reprojected to EPSG:4326 using the .warp xarray accessor.
 """
 
 import numpy as np
@@ -155,11 +155,11 @@ class TestAEFWorkflow:
             assert result.dtype == np.uint8
 
 
-class TestGeofluxAccessor:
-    """Test the .geoflux xarray accessor if available."""
+class TestWarpAccessor:
+    """Test the .warp xarray accessor if available."""
 
     def test_accessor_registration(self):
-        """The .geoflux accessor should be importable and registered."""
+        """The .warp accessor should be importable and registered."""
         try:
             import rust_warp.xarray_accessor  # noqa: F401
         except ImportError:

@@ -33,7 +33,7 @@ High-performance raster reprojection engine in Rust with xarray/dask integration
 | `python/rust_warp/geobox.py` | GeoBox class (CRS + affine + shape) |
 | `python/rust_warp/reproject.py` | High-level `reproject()` dispatcher |
 | `python/rust_warp/dask_graph.py` | Dask graph builder for lazy reprojection |
-| `python/rust_warp/xarray_accessor.py` | `.geoflux` xarray accessor |
+| `python/rust_warp/xarray_accessor.py` | `.warp` xarray accessor |
 
 ## Build & Development Commands
 
@@ -65,7 +65,7 @@ uv run maturin build --release
 
 ## Implementation Phases
 
-The full plan is in `geoflux-implementation-plan.md`. Summary:
+The full plan is in `rust-warp-implementation-plan.md`. Summary:
 
 1. **Phase 1** — Projection math (affine, TM, Mercator, Lambert, Albers, etc.)
 2. **Phase 2** — Warp engine + resampling kernels
