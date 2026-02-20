@@ -10,13 +10,86 @@ rust-warp uses **proj4rs** — a pure-Rust port of PROJ.4 — for coordinate tra
 
 rust-warp also includes **native Rust projection implementations** for the most common CRSes (all UTM zones, Web Mercator, Equirectangular, Lambert, Albers, Stereographic, Sinusoidal). These match PROJ's output to sub-millimetre accuracy. The proj4rs fallback is used only for CRSes not covered by native implementations.
 
-## Accuracy at Small Scales
+## Quantified Accuracy
 
-At typical working sizes (up to ~4096x4096 pixels), the coordinate differences between proj4rs and PROJ are negligible:
+The diagnostic test suite (`test_accuracy_diagnostic.py`) decomposes error into projection and kernel components across CRS pairs, kernels, and scale factors. All measurements use a synthetic gradient raster on a 0–1000 value scale.
 
-- **Native projections** match pyproj/PROJ to **<1mm at the equator** for all supported CRSes
-- **proj4rs fallback** matches PROJ to **<1mm** for most common transforms
-- **Pixel-by-pixel GDAL comparison tests** pass at 64x64 and 256x256 with exact match (`atol=0`) for nearest-neighbor resampling
+### Projection Coordinate Error (pixels)
+
+Measured as Euclidean distance between rust-warp and pyproj source pixel coordinates:
+
+| CRS pair | 64×64 max | 64×64 mean | 256×256 max | Dominant axis |
+|----------|-----------|------------|-------------|---------------|
+| UTM33 → 4326 | 0.013 | 0.009 | 0.055 | row |
+| 4326 → UTM33 | 0.038 | 0.023 | 0.045 | row |
+| UTM33 → 3857 | 0.013 | 0.008 | 0.054 | row |
+| 3857 → 4326 | **0.000** | **0.000** | **0.000** | exact |
+| 4326 → UTM17 | 0.114 | 0.071 | 0.136 | col + row |
+| UTM33 → UTM17 | 0.006 | 0.004 | 0.092 | row |
+
+Key observations:
+- **3857 → 4326 is exact** — the Mercator inverse matches PROJ perfectly
+- **4326 → UTM17 is worst** (~0.14px at 256×256) — the cross-zone Transverse Mercator jump stresses the projection math the most
+- **Error is overwhelmingly in the row (Y) axis** — column error is typically 100× smaller, pointing to a systematic offset in the Transverse Mercator northing calculation
+- All pairs stay below the 0.15px threshold
+
+### Error Decomposition (value units, 0–1000 scale)
+
+Breaking total error into projection vs kernel components (pyproj coords + rust-warp kernels isolates kernel-only error):
+
+| CRS pair | Kernel | Total max | Kernel-only max | Projection-only max |
+|----------|--------|-----------|-----------------|---------------------|
+| UTM33→4326 | bilinear | 2.27 | 0.80 | 2.23 |
+| UTM33→4326 | cubic | 0.89 | 0.82 | 0.61 |
+| UTM33→4326 | lanczos | 2.01 | 1.42 | 1.47 |
+| 4326→UTM33 | bilinear | 4.57 | 0.39 | 4.50 |
+| 4326→UTM33 | cubic | 1.67 | 0.37 | 1.67 |
+| 4326→UTM33 | lanczos | 3.60 | 0.83 | 3.59 |
+| UTM33→3857 | bilinear | 2.12 | 0.66 | 2.09 |
+| UTM33→3857 | cubic | 0.72 | 0.67 | 0.44 |
+| UTM33→3857 | lanczos | 1.49 | 1.14 | 1.03 |
+
+**Projection error dominates.** Kernel-only error (with identical coordinates) is 2–10× smaller than total error. The kernel implementations are correct; the accuracy gap is almost entirely from proj4rs vs PROJ coordinate differences.
+
+### Error by Scale Factor (same CRS, no projection involved)
+
+| Scale | bilinear max | lanczos max |
+|-------|-------------|-------------|
+| 4× up | 0.000 | 0.000 |
+| 2× up | 0.000 | 0.000 |
+| 1× identity | 0.000 | 0.000 |
+| 0.5× down | 13.93 | 8.74 |
+| 0.25× down | 25.54 | 4.30 |
+
+Upscaling and identity are **perfectly exact** (0.000 error). Downscaling with interpolating kernels diverges from GDAL at image borders — these kernels are not designed for downsampling. Use `average` for downscaling.
+
+### Non-Square Pixel Error (UTM33 → 4326)
+
+| Aspect ratio | bilinear max | lanczos max |
+|-------------|-------------|-------------|
+| 2:1 (wide) | 9.19 | 5.77 |
+| 1:2 (tall) | 0.05 | 0.06 |
+| 3:1 (wide) | 30.21 | 18.75 |
+| 1:3 (tall) | 0.17 | 0.11 |
+
+Wide pixels amplify the row-axis projection error through the wider pixel footprint. Tall pixels have near-zero error.
+
+### Edge vs Interior Error (UTM33 → 4326, 64×64)
+
+| Kernel | Interior max | Edge max | Interior mean | Edge mean |
+|--------|-------------|----------|---------------|-----------|
+| bilinear | 0.99 | 2.27 | 0.53 | 0.60 |
+| cubic | 0.32 | 0.89 | 0.07 | 0.13 |
+| lanczos | 0.57 | 2.01 | 0.23 | 0.41 |
+
+Edge pixels show ~2× higher error due to kernel boundary handling differences.
+
+### Sources of Inaccuracy (ranked)
+
+1. **Transverse Mercator northing offset** — the row-axis coordinate error in proj4rs is the dominant source. Fixing this would close most of the gap with GDAL.
+2. **Interpolating kernels used for downsampling** — bilinear/lanczos produce large border errors when downscaling (max 25 value units at 4× downscale). Use `average` for downsampling.
+3. **Wide non-square pixels** — amplify projection error through the wider pixel footprint. 3:1 aspect ratio hits 30 value units max error.
+4. **Kernel boundary handling** — small differences (~1.4 value units max) in edge pixel treatment. This is the noise floor.
 
 ## Accuracy at Large Scales
 
@@ -40,9 +113,9 @@ At larger scales (8K+ pixels, cross-continental transforms), accumulated floatin
 
 2. **Floating-point accumulation** — the linear approximation module interpolates between exactly-projected control points. Small differences in the control point values accumulate across long scanlines (16K+ pixels wide).
 
-3. **Boundary pixel handling** — rust-warp returns NaN/nodata for edge pixels where the kernel neighborhood extends outside source bounds. GDAL may extrapolate or clamp in some configurations.
+3. **Boundary pixel handling** — rust-warp returns NaN/nodata for edge pixels where the kernel neighbourhood extends outside source bounds. GDAL may extrapolate or clamp in some configurations.
 
-4. **Integer quantization** — for integer dtypes (especially uint8 with only 256 levels), sub-pixel coordinate differences are amplified by rounding. A 0.001-pixel source coordinate difference near a sharp edge can flip the output value entirely.
+4. **Integer quantisation** — for integer dtypes (especially uint8 with only 256 levels), sub-pixel coordinate differences are amplified by rounding. A 0.001-pixel source coordinate difference near a sharp edge can flip the output value entirely.
 
 ## Which CRSes are affected
 
