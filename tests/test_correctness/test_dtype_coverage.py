@@ -7,9 +7,7 @@ and cross-type consistency.
 
 import numpy as np
 import pytest
-
 from rust_warp import reproject_array
-
 
 KERNELS = ["nearest", "bilinear", "cubic", "lanczos", "average"]
 CRS_STR = "EPSG:32633"
@@ -26,7 +24,6 @@ class TestAllSupportedDtypes:
     ])
     def test_identity_preserves_dtype(self, dtype):
         """Identity reprojection should preserve dtype."""
-        size = 4
         if np.issubdtype(dtype, np.integer):
             info = np.iinfo(dtype)
             src = np.array([1, 2, 42, info.max - 1], dtype=dtype).reshape(2, 2)

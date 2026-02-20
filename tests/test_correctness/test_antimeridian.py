@@ -8,9 +8,7 @@ import numpy as np
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-
 from rust_warp import reproject_array, transform_points
-
 
 KERNELS = ["nearest", "bilinear", "cubic", "lanczos"]
 
@@ -95,7 +93,7 @@ class TestAntimeridianReproject:
 
     def _make_utm_near_dateline(self, size=32, zone=1):
         """Create a UTM raster near the dateline."""
-        crs = f"EPSG:3260{zone}" if zone >= 10 else f"EPSG:32601"
+        crs = f"EPSG:3260{zone}" if zone >= 10 else "EPSG:32601"
         pixel_size = 1000.0
         origin_x, origin_y = 400000.0, 6600000.0
         transform = (pixel_size, 0.0, origin_x, 0.0, -pixel_size, origin_y)

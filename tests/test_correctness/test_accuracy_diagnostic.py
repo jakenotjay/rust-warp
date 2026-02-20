@@ -14,7 +14,6 @@ import pyproj
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-
 from rust_warp import reproject_array, reproject_with_grid, transform_grid
 
 # ---------------------------------------------------------------------------
@@ -322,9 +321,12 @@ class TestErrorDecomposition:
 
         print(
             f"\n  DECOMP [{src_crs}->{dst_crs} {kernel}]  n={int(all_valid.sum())}"
-            f"\n    total:  max={total_stats['max']:8.4f}  mean={total_stats['mean']:.6f}  p95={total_stats['p95']:.4f}"
-            f"\n    kernel: max={kernel_stats['max']:8.4f}  mean={kernel_stats['mean']:.6f}  p95={kernel_stats['p95']:.4f}"
-            f"\n    proj:   max={proj_stats['max']:8.4f}  mean={proj_stats['mean']:.6f}  p95={proj_stats['p95']:.4f}"
+            f"\n    total:  max={total_stats['max']:8.4f}  mean={total_stats['mean']:.6f}"
+            f"  p95={total_stats['p95']:.4f}"
+            f"\n    kernel: max={kernel_stats['max']:8.4f}  mean={kernel_stats['mean']:.6f}"
+            f"  p95={kernel_stats['p95']:.4f}"
+            f"\n    proj:   max={proj_stats['max']:8.4f}  mean={proj_stats['mean']:.6f}"
+            f"  p95={proj_stats['p95']:.4f}"
         )
 
         # Kernel error with matched coords should be small
@@ -476,12 +478,15 @@ class TestErrorAtImageEdges:
 
         print(
             f"\n  EDGE/INT [{kernel}]"
-            f"\n    interior: n={int_stats['n']}  max={int_stats['max']:.4f}  mean={int_stats['mean']:.6f}"
-            f"\n    edge:     n={edge_stats['n']}  max={edge_stats['max']:.4f}  mean={edge_stats['mean']:.6f}"
+            f"\n    interior: n={int_stats['n']}  max={int_stats['max']:.4f}"
+            f"  mean={int_stats['mean']:.6f}"
+            f"\n    edge:     n={edge_stats['n']}  max={edge_stats['max']:.4f}"
+            f"  mean={edge_stats['mean']:.6f}"
         )
 
         # Interior error should be less than edge error (or edge has fewer valid pixels)
         if int_stats["n"] > 0 and edge_stats["n"] > 0:
             assert int_stats["mean"] <= edge_stats["mean"] + 0.01, (
-                f"Interior error ({int_stats['mean']:.4f}) not better than edge ({edge_stats['mean']:.4f})"
+                f"Interior error ({int_stats['mean']:.4f}) "
+                f"not better than edge ({edge_stats['mean']:.4f})"
             )

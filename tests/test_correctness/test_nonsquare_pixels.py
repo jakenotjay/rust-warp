@@ -8,9 +8,7 @@ import numpy as np
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-
 from rust_warp import reproject_array
-
 
 KERNELS = ["nearest", "bilinear", "cubic", "lanczos"]
 UTM_CRS = "EPSG:32633"

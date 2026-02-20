@@ -5,12 +5,9 @@ for reprojection, pasteable detection, and overlap edge cases.
 """
 
 import numpy as np
-import pytest
 import rasterio.warp
 from rasterio.crs import CRS
-
 from rust_warp import plan_reproject, reproject_array, transform_grid
-from rust_warp.geobox import GeoBox
 
 
 class TestTransformGrid:

@@ -14,7 +14,7 @@ import pytest
 from rust_warp import reproject_array, reproject_with_grid
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from conftest import compare_arrays, gdal_reproject, make_reprojection_setup
+from conftest import gdal_reproject, make_reprojection_setup
 
 CRS_PAIRS = [
     ("EPSG:32633", "EPSG:4326"),

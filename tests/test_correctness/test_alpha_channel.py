@@ -8,9 +8,7 @@ the caller manages the alpha band separately.
 
 import numpy as np
 import pytest
-
 from rust_warp import reproject_array
-
 
 KERNELS = ["nearest", "bilinear", "cubic", "lanczos"]
 CRS_STR = "EPSG:32633"
@@ -129,7 +127,7 @@ class TestRGBABandReproject:
             CRS_STR, transform, (size, size),
             resampling=kernel,
         )
-        alpha_out = reproject_array(
+        reproject_array(
             alpha, CRS_STR, transform,
             CRS_STR, transform, (size, size),
             resampling=kernel,
@@ -202,7 +200,7 @@ class TestGreyAlpha:
             CRS_STR, transform, (size, size),
             resampling=kernel,
         )
-        alpha_out = reproject_array(
+        reproject_array(
             alpha, CRS_STR, transform,
             CRS_STR, transform, (size, size),
             resampling=kernel,

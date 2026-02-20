@@ -62,7 +62,7 @@ def _extract_crs(obj) -> str:
             # Rust proj4rs backend cannot parse raw WKT strings.
             wkt = str(sr.attrs["crs_wkt"])
             try:
-                from pyproj import CRS as PyprojCRS
+                from pyproj import CRS as PyprojCRS  # noqa: N811
 
                 epsg = PyprojCRS.from_wkt(wkt).to_epsg()
                 if epsg is not None:
@@ -77,7 +77,7 @@ def _extract_crs(obj) -> str:
         # If it looks like WKT, try to extract EPSG via pyproj
         if crs_val.startswith(("PROJCRS[", "GEOGCRS[", "COMPOUNDCRS[")):
             try:
-                from pyproj import CRS as PyprojCRS
+                from pyproj import CRS as PyprojCRS  # noqa: N811
 
                 epsg = PyprojCRS.from_wkt(crs_val).to_epsg()
                 if epsg is not None:

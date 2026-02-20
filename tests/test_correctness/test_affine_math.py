@@ -6,9 +6,7 @@ and edge cases in the Rust affine module via the Python API.
 
 import numpy as np
 import pytest
-
 from rust_warp import reproject_array, transform_grid
-
 
 CRS_STR = "EPSG:32633"
 

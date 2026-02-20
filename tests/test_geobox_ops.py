@@ -6,8 +6,7 @@ slicing, resolution handling, and various geometric operations.
 
 import numpy as np
 import pytest
-
-from rust_warp.geobox import GeoBox, _find_spatial_dims, _extract_crs
+from rust_warp.geobox import GeoBox
 
 
 class TestGeoBoxFromBbox:
@@ -280,9 +279,9 @@ class TestGeoBoxFromOdc:
     def test_from_odc_basic(self):
         """Convert from odc-geo GeoBox."""
         pytest.importorskip("odc.geo")
-        from odc.geo.geobox import GeoBox as OdcGeoBox
-        from odc.geo import CRS as OdcCRS
         from affine import Affine
+        from odc.geo import CRS as OdcCRS  # noqa: N811
+        from odc.geo.geobox import GeoBox as OdcGeoBox
 
         odc_gbox = OdcGeoBox(
             shape=(100, 200),
