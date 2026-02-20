@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  id-token: write  # trusted publishing
+  contents: write
 
 jobs:
   build:
@@ -57,11 +57,10 @@ jobs:
           name: sdist
           path: dist
 
-  publish:
-    name: Publish to PyPI
+  release:
+    name: Create GitHub Release
     needs: [build, sdist]
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -69,7 +68,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          packages-dir: dist/
+          files: dist/*
+          generate_release_notes: true
