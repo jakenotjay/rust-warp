@@ -4,8 +4,12 @@ import numpy as np
 from rust_warp import plan_reproject
 
 EXPECTED_KEYS = {
-    "dst_slice", "src_slice", "src_transform", "dst_transform",
-    "dst_tile_shape", "has_data",
+    "dst_slice",
+    "src_slice",
+    "src_transform",
+    "dst_transform",
+    "dst_tile_shape",
+    "has_data",
 }
 
 # Common test parameters: 64x64 UTM 33N source
@@ -103,9 +107,12 @@ class TestPlanReprojectBounds:
         for tile in result:
             if tile["has_data"]:
                 sr0, sr1, sc0, sc1 = tile["src_slice"]
-                assert sr0 >= 0 and sr1 <= SRC_SHAPE[0]
-                assert sc0 >= 0 and sc1 <= SRC_SHAPE[1]
-                assert sr1 > sr0 and sc1 > sc0
+                assert sr0 >= 0
+                assert sr1 <= SRC_SHAPE[0]
+                assert sc0 >= 0
+                assert sc1 <= SRC_SHAPE[1]
+                assert sr1 > sr0
+                assert sc1 > sc0
 
 
 class TestPlanReprojectNoChunks:

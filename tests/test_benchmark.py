@@ -65,7 +65,12 @@ def test_rustwarp_nearest(benchmark, size):
 
     benchmark(
         reproject_array,
-        src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+        src,
+        src_crs,
+        src_transform,
+        dst_crs,
+        dst_transform,
+        dst_shape,
         resampling="nearest",
     )
 
@@ -103,7 +108,12 @@ def test_rustwarp_bilinear(benchmark, size):
 
     benchmark(
         reproject_array,
-        src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+        src,
+        src_crs,
+        src_transform,
+        dst_crs,
+        dst_transform,
+        dst_shape,
         resampling="bilinear",
     )
 
@@ -141,7 +151,12 @@ def test_rustwarp_cubic(benchmark, size):
 
     benchmark(
         reproject_array,
-        src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+        src,
+        src_crs,
+        src_transform,
+        dst_crs,
+        dst_transform,
+        dst_shape,
         resampling="cubic",
     )
 
@@ -179,7 +194,12 @@ def test_rustwarp_lanczos(benchmark, size):
 
     benchmark(
         reproject_array,
-        src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+        src,
+        src_crs,
+        src_transform,
+        dst_crs,
+        dst_transform,
+        dst_shape,
         resampling="lanczos",
     )
 
@@ -211,7 +231,7 @@ def test_rasterio_lanczos(benchmark, size):
 
 
 @pytest.mark.benchmark(group="average")
-@pytest.mark.parametrize("src_size,dst_size", [(256, 64), (512, 128), (1024, 256)])
+@pytest.mark.parametrize(("src_size", "dst_size"), [(256, 64), (512, 128), (1024, 256)])
 def test_rustwarp_average(benchmark, src_size, dst_size):
     src, src_crs, src_transform, dst_crs, dst_transform, dst_shape = _make_downscale_data(
         src_size, dst_size
@@ -219,13 +239,18 @@ def test_rustwarp_average(benchmark, src_size, dst_size):
 
     benchmark(
         reproject_array,
-        src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+        src,
+        src_crs,
+        src_transform,
+        dst_crs,
+        dst_transform,
+        dst_shape,
         resampling="average",
     )
 
 
 @pytest.mark.benchmark(group="average")
-@pytest.mark.parametrize("src_size,dst_size", [(256, 64), (512, 128), (1024, 256)])
+@pytest.mark.parametrize(("src_size", "dst_size"), [(256, 64), (512, 128), (1024, 256)])
 def test_rasterio_average(benchmark, src_size, dst_size):
     src, src_crs, src_transform, dst_crs, dst_transform, dst_shape = _make_downscale_data(
         src_size, dst_size
@@ -257,8 +282,9 @@ def test_rasterio_average(benchmark, src_size, dst_size):
 def test_plan_reproject_overhead(benchmark, n_tiles):
     """Measure plan_reproject overhead at various tile counts."""
     import math
+
     tile_size = max(32, int(1024 / math.isqrt(n_tiles)))
-    dst_size = tile_size * int(math.isqrt(n_tiles))
+    dst_size = tile_size * math.isqrt(n_tiles)
 
     def _plan():
         return plan_reproject(
@@ -289,7 +315,12 @@ def test_rustwarp_multiband(benchmark, n_bands):
     def _reproject_all():
         return [
             reproject_array(
-                band, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
+                band,
+                src_crs,
+                src_transform,
+                dst_crs,
+                dst_transform,
+                dst_shape,
                 resampling="bilinear",
             )
             for band in bands

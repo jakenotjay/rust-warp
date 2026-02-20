@@ -99,7 +99,8 @@ def _make_setup(src_crs, dst_crs, size=64, pixel_size=100.0):
     dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
         CRS.from_user_input(src_crs),
         CRS.from_user_input(dst_crs),
-        size, size,
+        size,
+        size,
         left=origin_x,
         bottom=origin_y - size * pixel_size,
         right=origin_x + size * pixel_size,
@@ -128,23 +129,29 @@ def _error_stats(a, b):
         "mean": float(diff.mean()),
         "p95": float(np.percentile(diff, 95)),
         "p99": float(np.percentile(diff, 99)),
-        "rmse": float(np.sqrt((diff ** 2).mean())),
+        "rmse": float(np.sqrt((diff**2).mean())),
     }
 
 
 def _coord_error_stats(rw_col, rw_row, pp_col, pp_row):
     """Compute coordinate error statistics in pixel units."""
-    valid = (
-        np.isfinite(rw_col) & np.isfinite(rw_row)
-        & np.isfinite(pp_col) & np.isfinite(pp_row)
-    )
+    valid = np.isfinite(rw_col) & np.isfinite(rw_row) & np.isfinite(pp_col) & np.isfinite(pp_row)
     n = int(valid.sum())
     if n == 0:
-        return {"n": 0, "max": 0.0, "mean": 0.0, "p95": 0.0, "p99": 0.0,
-                "max_col": 0.0, "max_row": 0.0, "mean_col": 0.0, "mean_row": 0.0}
+        return {
+            "n": 0,
+            "max": 0.0,
+            "mean": 0.0,
+            "p95": 0.0,
+            "p99": 0.0,
+            "max_col": 0.0,
+            "max_row": 0.0,
+            "mean_col": 0.0,
+            "mean_row": 0.0,
+        }
     col_diff = np.abs(rw_col[valid] - pp_col[valid])
     row_diff = np.abs(rw_row[valid] - pp_row[valid])
-    total = np.sqrt(col_diff ** 2 + row_diff ** 2)
+    total = np.sqrt(col_diff**2 + row_diff**2)
     return {
         "n": n,
         "max": float(total.max()),
@@ -178,7 +185,8 @@ class TestProjectionErrorByPair:
     """Measure coordinate error (pixels) for each CRS pair."""
 
     @pytest.mark.parametrize(
-        "crs_pair", CRS_PAIRS,
+        "crs_pair",
+        CRS_PAIRS,
         ids=[f"{s}->{d}" for s, d in CRS_PAIRS],
     )
     @pytest.mark.parametrize("size", [64, 256])
@@ -188,13 +196,18 @@ class TestProjectionErrorByPair:
         s = _make_setup(src_crs, dst_crs, size=size)
 
         rw_col, rw_row = transform_grid(
-            s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
             s["dst_shape"],
         )
         pp_col, pp_row = _compute_pyproj_grid(
-            s["dst_shape"], s["dst_transform"],
-            s["src_transform"], s["dst_crs"], s["src_crs"],
+            s["dst_shape"],
+            s["dst_transform"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["src_crs"],
         )
 
         stats = _coord_error_stats(rw_col, rw_row, pp_col, pp_row)
@@ -215,10 +228,11 @@ class TestProjectionErrorByPair:
 
 
 class TestEndToEndErrorByKernel:
-    """Measure total error (value units) for each CRS pair × kernel."""
+    """Measure total error (value units) for each CRS pair x kernel."""
 
     @pytest.mark.parametrize(
-        "crs_pair", CRS_PAIRS,
+        "crs_pair",
+        CRS_PAIRS,
         ids=[f"{s}->{d}" for s, d in CRS_PAIRS],
     )
     @pytest.mark.parametrize("kernel", KERNELS)
@@ -228,13 +242,21 @@ class TestEndToEndErrorByKernel:
         s = _make_setup(src_crs, dst_crs, size=64)
 
         rust = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
         gdal = _gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
 
@@ -259,7 +281,8 @@ class TestErrorDecomposition:
     """Decompose error into projection vs kernel components."""
 
     @pytest.mark.parametrize(
-        "crs_pair", CRS_PAIRS,
+        "crs_pair",
+        CRS_PAIRS,
         ids=[f"{s}->{d}" for s, d in CRS_PAIRS],
     )
     @pytest.mark.parametrize("kernel", ["bilinear", "cubic", "lanczos"])
@@ -270,15 +293,22 @@ class TestErrorDecomposition:
 
         # 1. Full rust-warp (own projection + own kernels)
         rust_full = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
 
         # 2. Hybrid: pyproj coordinates + rust-warp kernels
         pp_col, pp_row = _compute_pyproj_grid(
-            s["dst_shape"], s["dst_transform"],
-            s["src_transform"], s["dst_crs"], s["src_crs"],
+            s["dst_shape"],
+            s["dst_transform"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["src_crs"],
         )
         rust_hybrid = reproject_with_grid(
             s["src"],
@@ -289,8 +319,12 @@ class TestErrorDecomposition:
 
         # 3. GDAL reference (PROJ + GDAL kernels)
         gdal = _gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
 
@@ -354,13 +388,21 @@ class TestScaleFactorError:
         src = np.arange(src_size * src_size, dtype=np.float64).reshape(src_size, src_size)
 
         rust = reproject_array(
-            src, src_crs, src_transform,
-            src_crs, dst_transform, (dst_size, dst_size),
+            src,
+            src_crs,
+            src_transform,
+            src_crs,
+            dst_transform,
+            (dst_size, dst_size),
             resampling=kernel,
         )
         gdal = _gdal_reproject(
-            src, src_crs, src_transform,
-            src_crs, dst_transform, (dst_size, dst_size),
+            src,
+            src_crs,
+            src_transform,
+            src_crs,
+            dst_transform,
+            (dst_size, dst_size),
             resampling=kernel,
         )
 
@@ -407,7 +449,8 @@ class TestNonSquarePixelError:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32633"),
             CRS.from_user_input("EPSG:4326"),
-            cols, rows,
+            cols,
+            rows,
             left=origin_x,
             bottom=origin_y - rows * res_y,
             right=origin_x + cols * res_x,
@@ -417,13 +460,21 @@ class TestNonSquarePixelError:
         dst_shape = (dst_h, dst_w)
 
         rust = reproject_array(
-            src, "EPSG:32633", src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
         gdal = _gdal_reproject(
-            src, "EPSG:32633", src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
 
@@ -451,17 +502,25 @@ class TestErrorAtImageEdges:
         s = _make_setup("EPSG:32633", "EPSG:4326", size=64)
 
         rust = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
         gdal = _gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling=kernel,
         )
 
-        rows, cols = s["dst_shape"]
+        _rows, _cols = s["dst_shape"]
         margin = 8
 
         # Interior

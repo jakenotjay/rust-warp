@@ -256,7 +256,7 @@ class TestIntegerCorrectness:
 class TestAverageCorrectness:
     """Average resampling correctness for downsampling scenarios."""
 
-    @pytest.mark.parametrize("src_size,dst_size", [(128, 32), (256, 64)])
+    @pytest.mark.parametrize(("src_size", "dst_size"), [(128, 32), (256, 64)])
     def test_average_downscale(self, src_size, dst_size):
         crs = "EPSG:32633"
         pixel_size = 100.0
@@ -271,11 +271,21 @@ class TestAverageCorrectness:
         dst_shape = (dst_size, dst_size)
 
         rust_result = reproject_array(
-            src, crs, src_transform, crs, dst_transform, dst_shape,
+            src,
+            crs,
+            src_transform,
+            crs,
+            dst_transform,
+            dst_shape,
             resampling="average",
         )
         gdal_result = gdal_reproject(
-            src, crs, src_transform, crs, dst_transform, dst_shape,
+            src,
+            crs,
+            src_transform,
+            crs,
+            dst_transform,
+            dst_shape,
             resampling="average",
         )
 
@@ -283,10 +293,14 @@ class TestAverageCorrectness:
         if both_valid.any():
             compare_arrays(rust_result, gdal_result, "average", atol=2.0, rtol=0.01)
 
-    @pytest.mark.parametrize("crs_pair", [
-        ("EPSG:32633", "EPSG:4326"),
-        ("EPSG:32633", "EPSG:3857"),
-    ], ids=["UTM33->4326", "UTM33->3857"])
+    @pytest.mark.parametrize(
+        "crs_pair",
+        [
+            ("EPSG:32633", "EPSG:4326"),
+            ("EPSG:32633", "EPSG:3857"),
+        ],
+        ids=["UTM33->4326", "UTM33->3857"],
+    )
     def test_average_with_crs_change(self, crs_pair):
         """Average resampling with CRS reprojection: outputs should correlate.
 
@@ -321,9 +335,7 @@ class TestAverageCorrectness:
             e = gdal_result[both_valid].astype(np.float64)
             # Results should be strongly correlated even if absolute values differ
             correlation = np.corrcoef(a, e)[0, 1]
-            assert correlation > 0.95, (
-                f"Low correlation: {correlation:.4f}"
-            )
+            assert correlation > 0.95, f"Low correlation: {correlation:.4f}"
 
 
 # ---------------------------------------------------------------------------
@@ -333,11 +345,15 @@ class TestAverageCorrectness:
 
 def _assert_nearest_match(rust_result, gdal_result, src_cols):
     """Assert nearest-neighbor results match with >98% exact agreement."""
-    rust_nan = np.isnan(rust_result) if np.issubdtype(rust_result.dtype, np.floating) else np.zeros(
-        rust_result.shape, dtype=bool
+    rust_nan = (
+        np.isnan(rust_result)
+        if np.issubdtype(rust_result.dtype, np.floating)
+        else np.zeros(rust_result.shape, dtype=bool)
     )
-    gdal_nan = np.isnan(gdal_result) if np.issubdtype(gdal_result.dtype, np.floating) else np.zeros(
-        gdal_result.shape, dtype=bool
+    gdal_nan = (
+        np.isnan(gdal_result)
+        if np.issubdtype(gdal_result.dtype, np.floating)
+        else np.zeros(gdal_result.shape, dtype=bool)
     )
 
     # Compare valid pixels
@@ -355,6 +371,4 @@ def _assert_nearest_match(rust_result, gdal_result, src_cols):
     # Remaining differences should be bounded
     diff = np.abs(r - g)
     max_diff = diff.max()
-    assert max_diff <= src_cols + 1, (
-        f"Max diff {max_diff} exceeds src_cols+1={src_cols + 1}"
-    )
+    assert max_diff <= src_cols + 1, f"Max diff {max_diff} exceeds src_cols+1={src_cols + 1}"

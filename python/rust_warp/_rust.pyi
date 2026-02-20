@@ -4,7 +4,6 @@ import numpy as np
 from numpy.typing import NDArray
 
 def hello() -> str: ...
-
 def reproject_array(
     src: NDArray[Any],
     src_crs: str,

@@ -24,9 +24,7 @@ def _find_spatial_dims(obj) -> tuple[str, str]:
     """
     dims = list(obj.dims)
     if len(dims) < 2:
-        raise ValueError(
-            f"Need at least 2 dimensions, got {len(dims)}: {dims}"
-        )
+        raise ValueError(f"Need at least 2 dimensions, got {len(dims)}: {dims}")
 
     # Check known spatial names
     for y_name in _SPATIAL_Y_NAMES:
@@ -145,8 +143,8 @@ class GeoBox:
                 res_y = float(resolution)
             else:
                 res_x, res_y = float(resolution[0]), float(resolution[1])
-            cols = max(1, int(round(width / res_x)))
-            rows = max(1, int(round(height / res_y)))
+            cols = max(1, round(width / res_x))
+            rows = max(1, round(height / res_y))
         else:
             raise ValueError("Either resolution or shape must be provided")
 
@@ -162,8 +160,8 @@ class GeoBox:
         # Compute all 4 corners
         corners_col = [0, cols, 0, cols]
         corners_row = [0, 0, rows, rows]
-        xs = [a * cc + b * cr + c for cc, cr in zip(corners_col, corners_row)]
-        ys = [d * cc + e * cr + f for cc, cr in zip(corners_col, corners_row)]
+        xs = [a * cc + b * cr + c for cc, cr in zip(corners_col, corners_row, strict=True)]
+        ys = [d * cc + e * cr + f for cc, cr in zip(corners_col, corners_row, strict=True)]
         return (min(xs), min(ys), max(xs), max(ys))
 
     @property

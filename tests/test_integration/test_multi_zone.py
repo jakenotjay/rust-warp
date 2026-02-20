@@ -37,7 +37,7 @@ class TestMultiZone:
         results = []
 
         for zone in zones:
-            src, src_crs, src_transform, central_lon = self._make_zone_raster(zone)
+            src, src_crs, src_transform, _central_lon = self._make_zone_raster(zone)
 
             # Common destination covering all three zones
             # Zone 32 ≈ 9°E, zone 33 ≈ 15°E, zone 34 ≈ 21°E
@@ -47,19 +47,23 @@ class TestMultiZone:
             dst_shape = (200, 1800)
 
             result = reproject_array(
-                src, src_crs, src_transform,
-                dst_crs, dst_transform, dst_shape,
+                src,
+                src_crs,
+                src_transform,
+                dst_crs,
+                dst_transform,
+                dst_shape,
                 resampling="nearest",
             )
             results.append(result)
 
         # Each zone's output should have some valid pixels
-        for i, (zone, result) in enumerate(zip(zones, results)):
+        for _i, (zone, result) in enumerate(zip(zones, results, strict=True)):
             valid = ~np.isnan(result)
             assert valid.any(), f"Zone {zone} produced no valid pixels"
 
         # Verify zone values are preserved
-        for i, (zone, result) in enumerate(zip(zones, results)):
+        for _i, (zone, result) in enumerate(zip(zones, results, strict=True)):
             valid = ~np.isnan(result)
             if valid.any():
                 unique_vals = np.unique(result[valid])
@@ -69,8 +73,7 @@ class TestMultiZone:
                     or np.isclose(unique_vals, expected_val, atol=1).any()
                 )
                 assert match, (
-                    f"Zone {zone}: expected {expected_val} in output, "
-                    f"got {unique_vals[:5]}"
+                    f"Zone {zone}: expected {expected_val} in output, got {unique_vals[:5]}"
                 )
 
     def test_adjacent_zones_overlap_consistency(self):
@@ -93,11 +96,21 @@ class TestMultiZone:
         dst_shape = (200, 1600)
 
         result_a = reproject_array(
-            src_a, crs_a, tf_a, dst_crs, dst_transform, dst_shape,
+            src_a,
+            crs_a,
+            tf_a,
+            dst_crs,
+            dst_transform,
+            dst_shape,
             resampling="bilinear",
         )
         result_b = reproject_array(
-            src_b, crs_b, tf_b, dst_crs, dst_transform, dst_shape,
+            src_b,
+            crs_b,
+            tf_b,
+            dst_crs,
+            dst_transform,
+            dst_shape,
             resampling="bilinear",
         )
 
@@ -136,6 +149,7 @@ class TestMultiZone:
 
         # Via high-level API
         from rust_warp import reproject
+
         result_api = reproject(src, src_geobox, dst_geobox, resampling="bilinear")
 
         np.testing.assert_array_equal(result_direct, result_api)

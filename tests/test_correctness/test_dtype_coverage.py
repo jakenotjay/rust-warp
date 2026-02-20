@@ -17,11 +17,17 @@ TRANSFORM = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600400.0)
 class TestAllSupportedDtypes:
     """Test every supported dtype through identity reprojection."""
 
-    @pytest.mark.parametrize("dtype", [
-        np.float32, np.float64,
-        np.uint8, np.uint16,
-        np.int16, np.int8,
-    ])
+    @pytest.mark.parametrize(
+        "dtype",
+        [
+            np.float32,
+            np.float64,
+            np.uint8,
+            np.uint16,
+            np.int16,
+            np.int8,
+        ],
+    )
     def test_identity_preserves_dtype(self, dtype):
         """Identity reprojection should preserve dtype."""
         if np.issubdtype(dtype, np.integer):
@@ -31,22 +37,32 @@ class TestAllSupportedDtypes:
             src = np.array([1.0, 2.5, 42.0, 100.5], dtype=dtype).reshape(2, 2)
 
         result = reproject_array(
-            src, CRS_STR, TRANSFORM,
-            CRS_STR, TRANSFORM, (2, 2),
+            src,
+            CRS_STR,
+            TRANSFORM,
+            CRS_STR,
+            TRANSFORM,
+            (2, 2),
             resampling="nearest",
         )
 
         assert result.dtype == dtype
         np.testing.assert_array_equal(result, src)
 
-    @pytest.mark.parametrize("dtype", [
-        np.float32, np.float64,
-        np.uint8, np.uint16,
-        np.int16, np.int8,
-    ])
+    @pytest.mark.parametrize(
+        "dtype",
+        [
+            np.float32,
+            np.float64,
+            np.uint8,
+            np.uint16,
+            np.int16,
+            np.int8,
+        ],
+    )
     @pytest.mark.parametrize("kernel", KERNELS)
     def test_dtype_kernel_matrix(self, dtype, kernel):
-        """Every dtype × kernel combination should not crash."""
+        """Every dtype x kernel combination should not crash."""
         size = 16
         if np.issubdtype(dtype, np.integer):
             info = np.iinfo(dtype)
@@ -59,8 +75,12 @@ class TestAllSupportedDtypes:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -78,8 +98,12 @@ class TestIntegerValueRanges:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (16, 16),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (16, 16),
             resampling="nearest",
         )
 
@@ -87,13 +111,18 @@ class TestIntegerValueRanges:
 
     def test_int16_negative_values(self):
         """Negative int16 values should be preserved."""
-        src = np.array([[-32768, -100, 0, 100],
-                        [-1, 1, 32767, -9999]], dtype=np.int16).reshape(2, 4)
+        src = np.array([[-32768, -100, 0, 100], [-1, 1, 32767, -9999]], dtype=np.int16).reshape(
+            2, 4
+        )
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600200.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (2, 4),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (2, 4),
             resampling="nearest",
         )
 
@@ -106,8 +135,12 @@ class TestIntegerValueRanges:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600100.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (1, 4),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (1, 4),
             resampling="nearest",
         )
 
@@ -120,8 +153,12 @@ class TestIntegerValueRanges:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600100.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (1, 4),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (1, 4),
             resampling="nearest",
         )
 
@@ -132,16 +169,19 @@ class TestIntegerValueRanges:
 class TestIntegerNodata:
     """Nodata handling specific to integer types."""
 
-    @pytest.mark.parametrize("dtype,nodata", [
-        (np.uint8, 0),
-        (np.uint8, 255),
-        (np.uint16, 0),
-        (np.uint16, 65535),
-        (np.int16, -9999),
-        (np.int16, -32768),
-        (np.int8, -128),
-        (np.int8, 0),
-    ])
+    @pytest.mark.parametrize(
+        ("dtype", "nodata"),
+        [
+            (np.uint8, 0),
+            (np.uint8, 255),
+            (np.uint16, 0),
+            (np.uint16, 65535),
+            (np.int16, -9999),
+            (np.int16, -32768),
+            (np.int8, -128),
+            (np.int8, 0),
+        ],
+    )
     def test_integer_nodata_identity(self, dtype, nodata):
         """Integer nodata values should survive identity reprojection."""
         size = 8
@@ -151,20 +191,28 @@ class TestIntegerNodata:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
-            resampling="nearest", nodata=float(nodata),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
+            resampling="nearest",
+            nodata=float(nodata),
         )
 
         assert result.dtype == dtype
         np.testing.assert_array_equal(result[2:4, 2:4], nodata)
         np.testing.assert_array_equal(result[0:2, 0:2], 42)
 
-    @pytest.mark.parametrize("dtype,nodata", [
-        (np.uint8, 0),
-        (np.uint16, 0),
-        (np.int16, -9999),
-    ])
+    @pytest.mark.parametrize(
+        ("dtype", "nodata"),
+        [
+            (np.uint8, 0),
+            (np.uint16, 0),
+            (np.int16, -9999),
+        ],
+    )
     def test_integer_nodata_cross_crs(self, dtype, nodata):
         """Integer nodata should survive cross-CRS reprojection."""
         import rasterio.warp
@@ -180,7 +228,8 @@ class TestIntegerNodata:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(CRS_STR),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * px,
             right=origin_x + size * px,
@@ -189,9 +238,14 @@ class TestIntegerNodata:
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            "EPSG:4326", dst_transform, (dst_h, dst_w),
-            resampling="nearest", nodata=float(nodata),
+            src,
+            CRS_STR,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            (dst_h, dst_w),
+            resampling="nearest",
+            nodata=float(nodata),
         )
 
         assert result.dtype == dtype
@@ -204,16 +258,24 @@ class TestIntegerNodata:
 class TestUnsupportedDtypes:
     """Dtypes not supported should raise clear errors."""
 
-    @pytest.mark.parametrize("dtype", [
-        np.complex64, np.complex128,
-    ])
+    @pytest.mark.parametrize(
+        "dtype",
+        [
+            np.complex64,
+            np.complex128,
+        ],
+    )
     def test_complex_raises(self, dtype):
         """Complex dtypes should raise ValueError or TypeError."""
         src = np.ones((4, 4), dtype=dtype)
         with pytest.raises((ValueError, TypeError)):
             reproject_array(
-                src, CRS_STR, TRANSFORM,
-                CRS_STR, TRANSFORM, (4, 4),
+                src,
+                CRS_STR,
+                TRANSFORM,
+                CRS_STR,
+                TRANSFORM,
+                (4, 4),
             )
 
     def test_bool_raises(self):
@@ -221,8 +283,12 @@ class TestUnsupportedDtypes:
         src = np.ones((4, 4), dtype=bool)
         with pytest.raises((ValueError, TypeError)):
             reproject_array(
-                src, CRS_STR, TRANSFORM,
-                CRS_STR, TRANSFORM, (4, 4),
+                src,
+                CRS_STR,
+                TRANSFORM,
+                CRS_STR,
+                TRANSFORM,
+                (4, 4),
             )
 
 
@@ -235,8 +301,12 @@ class TestFloatSpecialValues:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600200.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (2, 2),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (2, 2),
             resampling="nearest",
         )
 
@@ -252,8 +322,12 @@ class TestFloatSpecialValues:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600200.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (2, 2),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (2, 2),
             resampling="nearest",
         )
 
@@ -267,8 +341,12 @@ class TestFloatSpecialValues:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600200.0)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (2, 2),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (2, 2),
             resampling="nearest",
         )
 

@@ -52,7 +52,7 @@ def _make_dataarray(
     if extra_dims:
         for dname, dsize in reversed(extra_dims.items()):
             shape = (dsize, *shape)
-            dims = [dname] + dims
+            dims = [dname, *dims]
 
     data = np.arange(int(np.prod(shape)), dtype=dtype).reshape(shape)
 
@@ -102,7 +102,7 @@ class TestGeoBoxFromXarray:
         recovered = GeoBox.from_xarray(da)
         assert recovered.shape == SRC_GEOBOX.shape
         assert recovered.crs == SRC_GEOBOX.crs
-        for a, b in zip(recovered.affine, SRC_GEOBOX.affine):
+        for a, b in zip(recovered.affine, SRC_GEOBOX.affine, strict=True):
             assert a == pytest.approx(b, abs=1e-10)
 
     def test_spatial_ref_coord(self):
@@ -159,7 +159,8 @@ class TestComputeDstGeobox:
         dst = _compute_dst_geobox(SRC_GEOBOX, "EPSG:4326", resolution=0.001)
         assert dst.crs == "EPSG:4326"
         assert dst.resolution[0] == pytest.approx(0.001, abs=1e-6)
-        assert dst.shape[0] > 0 and dst.shape[1] > 0
+        assert dst.shape[0] > 0
+        assert dst.shape[1] > 0
 
     def test_explicit_shape(self):
         dst = _compute_dst_geobox(SRC_GEOBOX, "EPSG:4326", shape=(100, 100))
@@ -178,8 +179,8 @@ class TestComputeDstGeobox:
     def test_same_crs(self):
         """Same CRS produces a similar bounding box."""
         dst = _compute_dst_geobox(SRC_GEOBOX, SRC_CRS)
-        src_left, src_bot, src_right, src_top = SRC_GEOBOX.bounds
-        dst_left, dst_bot, dst_right, dst_top = dst.bounds
+        src_left, _src_bot, _src_right, src_top = SRC_GEOBOX.bounds
+        dst_left, _dst_bot, _dst_right, dst_top = dst.bounds
         assert dst_left == pytest.approx(src_left, rel=0.01)
         assert dst_top == pytest.approx(src_top, rel=0.01)
 
@@ -222,7 +223,8 @@ class TestDataArrayAccessor:
         da = _make_dataarray(SRC_GEOBOX)
         result = da.warp.reproject("EPSG:4326", resolution=0.001, resampling="nearest")
         assert isinstance(result, xr.DataArray)
-        assert result.shape[0] > 0 and result.shape[1] > 0
+        assert result.shape[0] > 0
+        assert result.shape[1] > 0
         # Should have spatial_ref coord
         assert "spatial_ref" in result.coords
 
@@ -330,7 +332,9 @@ class TestDataArrayAccessorDask:
         both_valid = ~dask_nan & ~numpy_nan
         if both_valid.any():
             np.testing.assert_allclose(
-                dask_vals[both_valid], numpy_vals[both_valid], atol=1e-10,
+                dask_vals[both_valid],
+                numpy_vals[both_valid],
+                atol=1e-10,
             )
 
     def test_coords_correct(self):
@@ -345,7 +349,9 @@ class TestDataArrayAccessorDask:
         da = _make_dataarray(SRC_GEOBOX)
         da_chunked = da.chunk({"y": 32, "x": 32})
         result = da_chunked.warp.reproject(
-            SRC_CRS, resampling="nearest", dst_chunks=(16, 16),
+            SRC_CRS,
+            resampling="nearest",
+            dst_chunks=(16, 16),
         )
         assert hasattr(result.data, "dask")
 
@@ -432,7 +438,7 @@ class TestOdcGeoCompat:
         result = GeoBox.from_odc(mock_odc)
         assert result.crs == SRC_CRS
         assert result.shape == SRC_GEOBOX.shape
-        for a, b in zip(result.affine, SRC_GEOBOX.affine):
+        for a, b in zip(result.affine, SRC_GEOBOX.affine, strict=True):
             assert a == pytest.approx(b)
 
     def test_as_geobox_with_geobox(self):

@@ -1,5 +1,7 @@
 """Comparison tests: rust-warp vs rasterio/GDAL."""
 
+import typing
+
 import numpy as np
 import pytest
 import rasterio.warp
@@ -62,20 +64,27 @@ class TestNearestVsGDAL:
         diff = np.abs(r - g)
         max_diff = diff.max()
         assert max_diff <= src_cols, (
-            f"Max diff {max_diff} exceeds src_cols={src_cols} "
-            "(more than ±1 row boundary error)"
+            f"Max diff {max_diff} exceeds src_cols={src_cols} (more than ±1 row boundary error)"
         )
 
     def test_utm33_to_4326(self, utm33_to_4326_setup):
         s = utm33_to_4326_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="nearest",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="nearest",
         )
         self._assert_nearest_match(rust_result, gdal_result, src_cols=64)
@@ -83,13 +92,21 @@ class TestNearestVsGDAL:
     def test_utm33_to_3857(self, utm33_to_3857_setup):
         s = utm33_to_3857_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="nearest",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="nearest",
         )
         self._assert_nearest_match(rust_result, gdal_result, src_cols=64)
@@ -107,13 +124,21 @@ class TestBilinearVsGDAL:
     def test_utm33_to_4326(self, utm33_to_4326_setup):
         s = utm33_to_4326_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="bilinear",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="bilinear",
         )
 
@@ -123,28 +148,38 @@ class TestBilinearVsGDAL:
 
         if both_valid.any():
             np.testing.assert_allclose(
-                rust_result[both_valid], gdal_result[both_valid],
-                atol=10.0, rtol=0.01,
+                rust_result[both_valid],
+                gdal_result[both_valid],
+                atol=10.0,
+                rtol=0.01,
             )
 
 
 class TestCubicVsGDAL:
     """Cubic reprojection should be close to GDAL.
 
-    Cubic has a 4×4 neighborhood so more edge pixels are NaN.
+    Cubic has a 4x4 neighborhood so more edge pixels are NaN.
     Tolerance is generous (atol=10) initially.
     """
 
     def test_utm33_to_4326(self, utm33_to_4326_setup):
         s = utm33_to_4326_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="cubic",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="cubic",
         )
 
@@ -154,28 +189,38 @@ class TestCubicVsGDAL:
 
         if both_valid.any():
             np.testing.assert_allclose(
-                rust_result[both_valid], gdal_result[both_valid],
-                atol=10.0, rtol=0.01,
+                rust_result[both_valid],
+                gdal_result[both_valid],
+                atol=10.0,
+                rtol=0.01,
             )
 
 
 class TestLanczosVsGDAL:
     """Lanczos reprojection should be close to GDAL.
 
-    Lanczos has a 6×6 neighborhood so even more edge pixels are NaN.
+    Lanczos has a 6x6 neighborhood so even more edge pixels are NaN.
     Tolerance is generous (atol=10) initially.
     """
 
     def test_utm33_to_4326(self, utm33_to_4326_setup):
         s = utm33_to_4326_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="lanczos",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="lanczos",
         )
 
@@ -185,8 +230,10 @@ class TestLanczosVsGDAL:
 
         if both_valid.any():
             np.testing.assert_allclose(
-                rust_result[both_valid], gdal_result[both_valid],
-                atol=10.0, rtol=0.01,
+                rust_result[both_valid],
+                gdal_result[both_valid],
+                atol=10.0,
+                rtol=0.01,
             )
 
 
@@ -196,13 +243,21 @@ class TestAverageVsGDAL:
     def test_downscale(self, downscale_setup):
         s = downscale_setup
         rust_result = reproject_array(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="average",
         )
         gdal_result = gdal_reproject(
-            s["src"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["src"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="average",
         )
 
@@ -212,8 +267,10 @@ class TestAverageVsGDAL:
 
         if both_valid.any():
             np.testing.assert_allclose(
-                rust_result[both_valid], gdal_result[both_valid],
-                atol=10.0, rtol=0.05,
+                rust_result[both_valid],
+                gdal_result[both_valid],
+                atol=10.0,
+                rtol=0.05,
             )
 
 
@@ -225,9 +282,7 @@ class TestIdentity:
         transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000040.0)
         crs = "EPSG:32633"
 
-        result = reproject_array(
-            src, crs, transform, crs, transform, (4, 4), resampling="nearest"
-        )
+        result = reproject_array(src, crs, transform, crs, transform, (4, 4), resampling="nearest")
         np.testing.assert_array_equal(result, src)
 
     def test_identity_bilinear(self):
@@ -235,9 +290,7 @@ class TestIdentity:
         transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000080.0)
         crs = "EPSG:32633"
 
-        result = reproject_array(
-            src, crs, transform, crs, transform, (8, 8), resampling="bilinear"
-        )
+        result = reproject_array(src, crs, transform, crs, transform, (8, 8), resampling="bilinear")
         # Interior pixels should match; edges may differ due to bilinear boundary
         np.testing.assert_allclose(result[1:-1, 1:-1], src[1:-1, 1:-1], atol=1e-6)
 
@@ -246,9 +299,7 @@ class TestIdentity:
         transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000080.0)
         crs = "EPSG:32633"
 
-        result = reproject_array(
-            src, crs, transform, crs, transform, (8, 8), resampling="cubic"
-        )
+        result = reproject_array(src, crs, transform, crs, transform, (8, 8), resampling="cubic")
         # Interior pixels (2:-2) should match; edges affected by cubic radius
         np.testing.assert_allclose(result[2:-2, 2:-2], src[2:-2, 2:-2], atol=1e-6)
 
@@ -268,9 +319,7 @@ class TestIdentity:
         transform = (10.0, 0.0, 500000.0, 0.0, -10.0, 6000080.0)
         crs = "EPSG:32633"
 
-        result = reproject_array(
-            src, crs, transform, crs, transform, (8, 8), resampling="average"
-        )
+        result = reproject_array(src, crs, transform, crs, transform, (8, 8), resampling="average")
         # Average with scale=1 should match exactly
         np.testing.assert_allclose(result, src, atol=1e-6)
 
@@ -303,8 +352,14 @@ class TestNodata:
         crs = "EPSG:32633"
 
         result = reproject_array(
-            src, crs, transform, crs, transform, (8, 8),
-            resampling="nearest", nodata=-9999.0,
+            src,
+            crs,
+            transform,
+            crs,
+            transform,
+            (8, 8),
+            resampling="nearest",
+            nodata=-9999.0,
         )
 
         # Nodata pixels should remain as the sentinel value
@@ -329,7 +384,12 @@ class TestErrorHandling:
 
         with pytest.raises(ValueError, match="resampling"):
             reproject_array(
-                src, "EPSG:4326", transform, "EPSG:4326", transform, (4, 4),
+                src,
+                "EPSG:4326",
+                transform,
+                "EPSG:4326",
+                transform,
+                (4, 4),
                 resampling="invalid_method",
             )
 
@@ -339,7 +399,12 @@ class TestErrorHandling:
 
         with pytest.raises((ValueError, TypeError)):
             reproject_array(
-                src, "EPSG:32633", transform, "EPSG:32633", transform, (4, 4),
+                src,
+                "EPSG:32633",
+                transform,
+                "EPSG:32633",
+                transform,
+                (4, 4),
             )
 
 
@@ -352,7 +417,12 @@ class TestMultiDtype:
     def test_float32_identity(self):
         src = np.arange(16, dtype=np.float32).reshape(4, 4)
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
         assert result.dtype == np.float32
@@ -363,11 +433,21 @@ class TestMultiDtype:
         src_f32 = src_f64.astype(np.float32)
 
         result_f64 = reproject_array(
-            src_f64, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src_f64,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
         result_f32 = reproject_array(
-            src_f32, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src_f32,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
 
@@ -377,7 +457,12 @@ class TestMultiDtype:
     def test_uint8_identity(self):
         src = np.arange(16, dtype=np.uint8).reshape(4, 4)
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
         assert result.dtype == np.uint8
@@ -386,7 +471,12 @@ class TestMultiDtype:
     def test_uint16_identity(self):
         src = np.arange(16, dtype=np.uint16).reshape(4, 4)
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
         assert result.dtype == np.uint16
@@ -395,7 +485,12 @@ class TestMultiDtype:
     def test_int16_identity(self):
         src = np.arange(16, dtype=np.int16).reshape(4, 4)
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
             resampling="nearest",
         )
         assert result.dtype == np.int16
@@ -406,8 +501,14 @@ class TestMultiDtype:
         src[1, 1] = 255  # sentinel nodata
 
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
-            resampling="nearest", nodata=255.0,
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
+            resampling="nearest",
+            nodata=255.0,
         )
         assert result.dtype == np.uint8
         assert result[1, 1] == 255
@@ -418,8 +519,14 @@ class TestMultiDtype:
         src[2, 2] = -9999
 
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, self.TRANSFORM, (4, 4),
-            resampling="nearest", nodata=-9999.0,
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            self.TRANSFORM,
+            (4, 4),
+            resampling="nearest",
+            nodata=-9999.0,
         )
         assert result.dtype == np.int16
         assert result[2, 2] == -9999
@@ -431,7 +538,12 @@ class TestMultiDtype:
         # Use a transform that maps some output pixels outside the source
         big_transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6000400.0)
         result = reproject_array(
-            src, self.CRS, self.TRANSFORM, self.CRS, big_transform, (8, 8),
+            src,
+            self.CRS,
+            self.TRANSFORM,
+            self.CRS,
+            big_transform,
+            (8, 8),
             resampling="nearest",
         )
         assert result.dtype == np.float32
@@ -445,9 +557,13 @@ class TestMultiDtype:
 class TestPlanReproject:
     """plan_reproject should return tile plan dicts."""
 
-    EXPECTED_KEYS = {
-        "dst_slice", "src_slice", "src_transform", "dst_transform",
-        "dst_tile_shape", "has_data",
+    EXPECTED_KEYS: typing.ClassVar[set[str]] = {
+        "dst_slice",
+        "src_slice",
+        "src_transform",
+        "dst_transform",
+        "dst_tile_shape",
+        "has_data",
     }
 
     def test_returns_nonempty_list(self):

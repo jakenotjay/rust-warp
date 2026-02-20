@@ -18,8 +18,10 @@ class TestTransformRoundTrip:
         assert y_utm.dtype == np.float64
 
         # UTM33 values should be in reasonable range
-        assert np.all(x_utm > 400_000) and np.all(x_utm < 700_000)
-        assert np.all(y_utm > 5_700_000) and np.all(y_utm < 5_900_000)
+        assert np.all(x_utm > 400_000)
+        assert np.all(x_utm < 700_000)
+        assert np.all(y_utm > 5_700_000)
+        assert np.all(y_utm < 5_900_000)
 
         # Inverse: UTM33 → 4326
         x_back, y_back = transform_points(x_utm, y_utm, "EPSG:32633", "EPSG:4326")
@@ -89,7 +91,7 @@ class TestTransformEdgeCases:
         x = np.array([15.0], dtype=np.float64)
         y = np.array([52.0], dtype=np.float64)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="EPSG:99999"):
             transform_points(x, y, "EPSG:99999", "EPSG:32633")
 
     def test_same_crs_identity(self):

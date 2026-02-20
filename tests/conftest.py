@@ -26,11 +26,15 @@ def compare_arrays(actual, expected, method, atol=1.0, rtol=1e-4):
     Raises:
         AssertionError if tolerances are exceeded.
     """
-    actual_valid = ~np.isnan(actual) if np.issubdtype(actual.dtype, np.floating) else np.ones(
-        actual.shape, dtype=bool
+    actual_valid = (
+        ~np.isnan(actual)
+        if np.issubdtype(actual.dtype, np.floating)
+        else np.ones(actual.shape, dtype=bool)
     )
-    expected_valid = ~np.isnan(expected) if np.issubdtype(expected.dtype, np.floating) else np.ones(
-        expected.shape, dtype=bool
+    expected_valid = (
+        ~np.isnan(expected)
+        if np.issubdtype(expected.dtype, np.floating)
+        else np.ones(expected.shape, dtype=bool)
     )
     both_valid = actual_valid & expected_valid
 
@@ -124,19 +128,16 @@ def synthetic_raster(shape, dtype=np.float64, pattern="gradient"):
         data = np.full(shape, 42.0, dtype=np.float64)
     elif pattern == "sinusoidal":
         r, c = np.meshgrid(np.arange(rows), np.arange(cols), indexing="ij")
-        data = (
-            128.0
-            + 100.0 * np.sin(2 * np.pi * r / rows)
-            + 50.0 * np.cos(4 * np.pi * c / cols)
-        )
+        data = 128.0 + 100.0 * np.sin(2 * np.pi * r / rows) + 50.0 * np.cos(4 * np.pi * c / cols)
     else:
         raise ValueError(f"Unknown pattern: {pattern}")
 
     return data.astype(dtype)
 
 
-def gdal_reproject(src, src_crs, src_transform, dst_crs, dst_transform, dst_shape, resampling,
-                   nodata=np.nan):
+def gdal_reproject(
+    src, src_crs, src_transform, dst_crs, dst_transform, dst_shape, resampling, nodata=np.nan
+):
     """Reproject using rasterio/GDAL as reference implementation."""
     resampling_map = {
         "nearest": rasterio.warp.Resampling.nearest,
@@ -236,11 +237,11 @@ def make_reprojection_setup(src_crs, dst_crs, size=64, pixel_size=100.0):
 # ---------------------------------------------------------------------------
 
 CRS_PAIRS = [
-    ("EPSG:32633", "EPSG:4326"),   # UTM33 → Geographic
-    ("EPSG:4326", "EPSG:32633"),   # Geographic → UTM33
-    ("EPSG:32633", "EPSG:3857"),   # UTM33 → Web Mercator
-    ("EPSG:3857", "EPSG:4326"),    # Web Mercator → Geographic
-    ("EPSG:4326", "EPSG:32617"),   # Geographic → UTM17
+    ("EPSG:32633", "EPSG:4326"),  # UTM33 → Geographic
+    ("EPSG:4326", "EPSG:32633"),  # Geographic → UTM33
+    ("EPSG:32633", "EPSG:3857"),  # UTM33 → Web Mercator
+    ("EPSG:3857", "EPSG:4326"),  # Web Mercator → Geographic
+    ("EPSG:4326", "EPSG:32617"),  # Geographic → UTM17
     ("EPSG:32633", "EPSG:32617"),  # UTM33 → UTM17
 ]
 

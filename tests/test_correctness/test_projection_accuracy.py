@@ -41,9 +41,7 @@ def compute_pyproj_grid(setup):
 
     dst_rows, dst_cols = dst_shape
 
-    transformer = pyproj.Transformer.from_crs(
-        setup["dst_crs"], setup["src_crs"], always_xy=True
-    )
+    transformer = pyproj.Transformer.from_crs(setup["dst_crs"], setup["src_crs"], always_xy=True)
 
     cols_idx = np.arange(dst_cols) + 0.5
     rows_idx = np.arange(dst_rows) + 0.5

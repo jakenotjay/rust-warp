@@ -35,15 +35,18 @@ def make_random_points(src_crs, dst_crs, n=10000, seed=42):
 class TestProjectionAccuracy:
     """Test that native projection results match pyproj to <1mm."""
 
-    @pytest.mark.parametrize("src_crs,dst_crs", [
-        ("EPSG:4326", "EPSG:32633"),   # Geographic → UTM 33N
-        ("EPSG:4326", "EPSG:3857"),    # Geographic → Web Mercator
-        ("EPSG:4326", "EPSG:32617"),   # Geographic → UTM 17N
-        ("EPSG:32633", "EPSG:4326"),   # UTM → Geographic
-        ("EPSG:32633", "EPSG:3857"),   # UTM → Web Mercator
-        ("EPSG:3857", "EPSG:4326"),    # Web Mercator → Geographic
-        ("EPSG:3857", "EPSG:32633"),   # Web Mercator → UTM
-    ])
+    @pytest.mark.parametrize(
+        ("src_crs", "dst_crs"),
+        [
+            ("EPSG:4326", "EPSG:32633"),  # Geographic → UTM 33N
+            ("EPSG:4326", "EPSG:3857"),  # Geographic → Web Mercator
+            ("EPSG:4326", "EPSG:32617"),  # Geographic → UTM 17N
+            ("EPSG:32633", "EPSG:4326"),  # UTM → Geographic
+            ("EPSG:32633", "EPSG:3857"),  # UTM → Web Mercator
+            ("EPSG:3857", "EPSG:4326"),  # Web Mercator → Geographic
+            ("EPSG:3857", "EPSG:32633"),  # Web Mercator → UTM
+        ],
+    )
     def test_reproject_matches_pyproj(self, src_crs, dst_crs):
         """End-to-end reprojection should closely match pyproj reference.
 
@@ -69,12 +72,12 @@ class TestProjectionAccuracy:
         transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
 
         # Get source extent corners
-        a, b, c, d, e, f = src_transform
+        a, _b, c, _d, e, f = src_transform
         corners_src = [
-            (c, f),                                    # top-left
-            (c + a * size, f),                         # top-right
-            (c, f + e * size),                         # bottom-left
-            (c + a * size, f + e * size),               # bottom-right
+            (c, f),  # top-left
+            (c + a * size, f),  # top-right
+            (c, f + e * size),  # bottom-left
+            (c + a * size, f + e * size),  # bottom-right
         ]
         corners_dst = [transformer.transform(x, y) for x, y in corners_src]
 
@@ -91,8 +94,12 @@ class TestProjectionAccuracy:
 
         # Reproject with rust-warp
         result = reproject_array(
-            src, src_crs, src_transform,
-            dst_crs, dst_transform, (dst_size, dst_size),
+            src,
+            src_crs,
+            src_transform,
+            dst_crs,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="nearest",
         )
 
@@ -118,12 +125,15 @@ class TestCoordinateTransformAccuracy:
     match what pyproj predicts.
     """
 
-    @pytest.mark.parametrize("src_crs,dst_crs", [
-        ("EPSG:4326", "EPSG:32633"),
-        ("EPSG:4326", "EPSG:3857"),
-        ("EPSG:32633", "EPSG:4326"),
-        ("EPSG:32633", "EPSG:3857"),
-    ])
+    @pytest.mark.parametrize(
+        ("src_crs", "dst_crs"),
+        [
+            ("EPSG:4326", "EPSG:32633"),
+            ("EPSG:4326", "EPSG:3857"),
+            ("EPSG:32633", "EPSG:4326"),
+            ("EPSG:32633", "EPSG:3857"),
+        ],
+    )
     def test_transform_consistency(self, src_crs, dst_crs):
         """Verify that projected pixel locations are consistent.
 
@@ -143,7 +153,7 @@ class TestCoordinateTransformAccuracy:
 
         # Compute dst grid
         transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
-        a, b, c, d, e, f = src_transform
+        a, _b, c, _d, e, f = src_transform
         corners = [(c, f), (c + a * size, f + e * size)]
         dst_corners = [transformer.transform(x, y) for x, y in corners]
 
@@ -158,15 +168,23 @@ class TestCoordinateTransformAccuracy:
 
         # Forward reproject
         fwd = reproject_array(
-            src, src_crs, src_transform,
-            dst_crs, dst_transform, (size, size),
+            src,
+            src_crs,
+            src_transform,
+            dst_crs,
+            dst_transform,
+            (size, size),
             resampling="nearest",
         )
 
         # Roundtrip: reproject back
         roundtrip = reproject_array(
-            fwd, dst_crs, dst_transform,
-            src_crs, src_transform, (size, size),
+            fwd,
+            dst_crs,
+            dst_transform,
+            src_crs,
+            src_transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -183,6 +201,4 @@ class TestCoordinateTransformAccuracy:
             diff = np.abs(orig[both_valid] - rt[both_valid])
             # Most should match exactly
             exact_match = np.sum(diff == 0) / len(diff) * 100
-            assert exact_match > 70, (
-                f"Only {exact_match:.0f}% exact match on roundtrip (need >70%)"
-            )
+            assert exact_match > 70, f"Only {exact_match:.0f}% exact match on roundtrip (need >70%)"

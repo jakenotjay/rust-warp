@@ -31,8 +31,9 @@ class TestLargeScale:
 
         # Use sinusoidal pattern (bounded values, smooth)
         rows, cols = np.meshgrid(np.arange(size), np.arange(size), indexing="ij")
-        src = (128.0 + 100.0 * np.sin(2 * np.pi * rows / size) +
-               50.0 * np.cos(4 * np.pi * cols / size)).astype(np.float64)
+        src = (
+            128.0 + 100.0 * np.sin(2 * np.pi * rows / size) + 50.0 * np.cos(4 * np.pi * cols / size)
+        ).astype(np.float64)
 
         # Approximate destination
         dst_pixel = 0.001 * (size / 1024)
@@ -47,8 +48,12 @@ class TestLargeScale:
         src, src_transform, dst_transform, dst_shape = self._make_large_raster(4096)
 
         result = reproject_array(
-            src, self.CRS, src_transform,
-            self.DST_CRS, dst_transform, dst_shape,
+            src,
+            self.CRS,
+            src_transform,
+            self.DST_CRS,
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
 
@@ -65,15 +70,19 @@ class TestLargeScale:
 
         src_transform = (pixel_size, 0.0, origin_x, 0.0, -pixel_size, origin_y)
 
-        rows, cols = np.meshgrid(np.arange(src_size), np.arange(src_size), indexing="ij")
+        rows, _cols = np.meshgrid(np.arange(src_size), np.arange(src_size), indexing="ij")
         src = (rows / src_size * 255).astype(np.float64)
 
         dst_pixel = pixel_size * (src_size / dst_size)
         dst_transform = (dst_pixel, 0.0, origin_x, 0.0, -dst_pixel, origin_y)
 
         result = reproject_array(
-            src, self.CRS, src_transform,
-            self.CRS, dst_transform, (dst_size, dst_size),
+            src,
+            self.CRS,
+            src_transform,
+            self.CRS,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="average",
         )
 
@@ -89,13 +98,21 @@ class TestLargeScale:
         src, src_transform, dst_transform, dst_shape = self._make_large_raster(size)
 
         rust_result = reproject_array(
-            src, self.CRS, src_transform,
-            self.DST_CRS, dst_transform, dst_shape,
+            src,
+            self.CRS,
+            src_transform,
+            self.DST_CRS,
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
         gdal_result = gdal_reproject(
-            src, self.CRS, src_transform,
-            self.DST_CRS, dst_transform, dst_shape,
+            src,
+            self.CRS,
+            src_transform,
+            self.DST_CRS,
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
 

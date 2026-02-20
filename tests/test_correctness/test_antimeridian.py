@@ -71,7 +71,7 @@ class TestAntimeridianTransformPoints:
         x = np.array([179.99, -179.99], dtype=np.float64)
         y = np.array([60.0, 60.0], dtype=np.float64)
 
-        x_utm, y_utm = transform_points(x, y, "EPSG:4326", "EPSG:32601")
+        x_utm, _y_utm = transform_points(x, y, "EPSG:4326", "EPSG:32601")
 
         # These points are ~0.02° apart, so UTM eastings should be close
         # (not separated by millions of meters from wrapping error)
@@ -104,28 +104,33 @@ class TestAntimeridianReproject:
     def test_utm_zone1_to_4326_valid(self, kernel):
         """UTM zone 1 (near dateline) to 4326 should produce valid output."""
         size = 32
-        src, src_crs, src_transform, px = self._make_utm_near_dateline(size, zone=1)
+        src, src_crs, src_transform, _px = self._make_utm_near_dateline(size, zone=1)
 
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(src_crs),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
-            left=400000.0, bottom=6600000.0 - size * 1000.0,
-            right=400000.0 + size * 1000.0, top=6600000.0,
+            size,
+            size,
+            left=400000.0,
+            bottom=6600000.0 - size * 1000.0,
+            right=400000.0 + size * 1000.0,
+            top=6600000.0,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, src_crs, src_transform,
-            "EPSG:4326", dst_transform, (dst_h, dst_w),
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
         assert result.shape == (dst_h, dst_w)
         valid_pct = np.sum(~np.isnan(result)) / result.size * 100
-        assert valid_pct > 30, (
-            f"[{kernel}] Only {valid_pct:.0f}% valid pixels near dateline"
-        )
+        assert valid_pct > 30, f"[{kernel}] Only {valid_pct:.0f}% valid pixels near dateline"
 
     @pytest.mark.parametrize("kernel", KERNELS)
     def test_4326_east_of_dateline_to_utm(self, kernel):
@@ -138,22 +143,28 @@ class TestAntimeridianReproject:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32660"),
-            size, size,
-            left=170.0, bottom=65.0 - size * res, right=170.0 + size * res, top=65.0,
+            size,
+            size,
+            left=170.0,
+            bottom=65.0 - size * res,
+            right=170.0 + size * res,
+            top=65.0,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32660", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32660",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
         assert result.shape == (dst_h, dst_w)
         valid_pct = np.sum(~np.isnan(result)) / result.size * 100
-        assert valid_pct > 30, (
-            f"[{kernel}] Only {valid_pct:.0f}% valid pixels east of dateline"
-        )
+        assert valid_pct > 30, f"[{kernel}] Only {valid_pct:.0f}% valid pixels east of dateline"
 
     @pytest.mark.parametrize("kernel", KERNELS)
     def test_4326_west_of_dateline_to_utm(self, kernel):
@@ -166,47 +177,63 @@ class TestAntimeridianReproject:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32601"),
-            size, size,
-            left=-179.0, bottom=65.0 - size * res,
-            right=-179.0 + size * res, top=65.0,
+            size,
+            size,
+            left=-179.0,
+            bottom=65.0 - size * res,
+            right=-179.0 + size * res,
+            top=65.0,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32601", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32601",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
         assert result.shape == (dst_h, dst_w)
         valid_pct = np.sum(~np.isnan(result)) / result.size * 100
-        assert valid_pct > 30, (
-            f"[{kernel}] Only {valid_pct:.0f}% valid pixels west of dateline"
-        )
+        assert valid_pct > 30, f"[{kernel}] Only {valid_pct:.0f}% valid pixels west of dateline"
 
     def test_dateline_nearest_matches_gdal(self):
         """UTM zone 1 to 4326 nearest should match GDAL near dateline."""
         size = 32
-        src, src_crs, src_transform, px = self._make_utm_near_dateline(size, zone=1)
+        src, src_crs, src_transform, _px = self._make_utm_near_dateline(size, zone=1)
 
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(src_crs),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
-            left=400000.0, bottom=6600000.0 - size * 1000.0,
-            right=400000.0 + size * 1000.0, top=6600000.0,
+            size,
+            size,
+            left=400000.0,
+            bottom=6600000.0 - size * 1000.0,
+            right=400000.0 + size * 1000.0,
+            top=6600000.0,
         )
         dst_transform = tuple(dst_affine)[:6]
         dst_shape = (dst_h, dst_w)
 
         rust_result = reproject_array(
-            src, src_crs, src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling="nearest",
         )
         gdal_result = _gdal_reproject(
-            src, src_crs, src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling="nearest",
         )
 
@@ -237,7 +264,8 @@ class TestAntimeridianUTMToGeographic:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32601"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -246,8 +274,12 @@ class TestAntimeridianUTMToGeographic:
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:32601", src_transform,
-            "EPSG:4326", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:32601",
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 
@@ -266,7 +298,8 @@ class TestAntimeridianUTMToGeographic:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32660"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -275,8 +308,12 @@ class TestAntimeridianUTMToGeographic:
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:32660", src_transform,
-            "EPSG:4326", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:32660",
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 

@@ -1,0 +1,9 @@
+[default.extend-words]
+# Domain-specific terms that aren't typos
+crs = "crs"       # Coordinate Reference System
+wkt = "wkt"       # Well-Known Text
+epsg = "epsg"     # EPSG codes
+nodata = "nodata" # NoData value
+
+[files]
+extend-exclude = ["*.lock", "uv.lock", "Cargo.lock"]

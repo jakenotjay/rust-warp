@@ -21,8 +21,10 @@ class TestTransformGrid:
         transform = (px, 0.0, origin_x, 0.0, -px, origin_y)
 
         col_grid, row_grid = transform_grid(
-            "EPSG:32633", transform,
-            "EPSG:32633", transform,
+            "EPSG:32633",
+            transform,
+            "EPSG:32633",
+            transform,
             (size, size),
         )
 
@@ -45,8 +47,10 @@ class TestTransformGrid:
         dst_transform = (px, 0.0, origin_x + 5 * px, 0.0, -px, origin_y - 3 * px)
 
         col_grid, row_grid = transform_grid(
-            "EPSG:32633", src_transform,
-            "EPSG:32633", dst_transform,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
             (size, size),
         )
 
@@ -64,8 +68,10 @@ class TestTransformGrid:
         dst_transform = (px_dst, 0.0, origin_x, 0.0, -px_dst, origin_y)
 
         col_grid, row_grid = transform_grid(
-            "EPSG:32633", src_transform,
-            "EPSG:32633", dst_transform,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
             (size, size),
         )
 
@@ -89,7 +95,8 @@ class TestTransformGrid:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32633"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * px,
             right=origin_x + size * px,
@@ -97,9 +104,11 @@ class TestTransformGrid:
         )
         dst_transform = tuple(dst_affine)[:6]
 
-        col_grid, row_grid = transform_grid(
-            "EPSG:32633", src_transform,
-            "EPSG:4326", dst_transform,
+        col_grid, _row_grid = transform_grid(
+            "EPSG:32633",
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
             (dst_h, dst_w),
         )
 
@@ -288,8 +297,12 @@ class TestPasteableDetection:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, "EPSG:32633", transform,
-            "EPSG:32633", transform, (size, size),
+            src,
+            "EPSG:32633",
+            transform,
+            "EPSG:32633",
+            transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -307,8 +320,12 @@ class TestPasteableDetection:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, "EPSG:32633", src_transform,
-            "EPSG:32633", dst_transform, (size, size),
+            src,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
+            (size, size),
             resampling="bilinear",
         )
 
@@ -351,7 +368,8 @@ class TestGeoBoxOverlap:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32633"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * px,
             right=origin_x + size * px,

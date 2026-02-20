@@ -21,14 +21,10 @@ if TYPE_CHECKING:
 def _slice_to_block_indices(sr0, sr1, sc0, sc1, row_bounds, col_bounds):
     """Return list of (block_row, block_col) that overlap the pixel-space slice."""
     row_blocks = [
-        i
-        for i in range(len(row_bounds) - 1)
-        if row_bounds[i] < sr1 and row_bounds[i + 1] > sr0
+        i for i in range(len(row_bounds) - 1) if row_bounds[i] < sr1 and row_bounds[i + 1] > sr0
     ]
     col_blocks = [
-        j
-        for j in range(len(col_bounds) - 1)
-        if col_bounds[j] < sc1 and col_bounds[j + 1] > sc0
+        j for j in range(len(col_bounds) - 1) if col_bounds[j] < sc1 and col_bounds[j + 1] > sc0
     ]
     return [(i, j) for i in row_blocks for j in col_blocks]
 
@@ -47,16 +43,14 @@ def _reproject_from_blocks(
     block_indices = plan["_block_indices"]
     sr0, sr1, sc0, sc1 = plan["src_slice"]
     assembled = np.empty((sr1 - sr0, sc1 - sc0), dtype=blocks[0].dtype)
-    for block, (bi, bj) in zip(blocks, block_indices):
+    for block, (bi, bj) in zip(blocks, block_indices, strict=True):
         ar0 = max(row_bounds[bi], sr0) - sr0
         ar1 = min(row_bounds[bi + 1], sr1) - sr0
         ac0 = max(col_bounds[bj], sc0) - sc0
         ac1 = min(col_bounds[bj + 1], sc1) - sc0
         sbr0 = max(sr0 - row_bounds[bi], 0)
         sbc0 = max(sc0 - col_bounds[bj], 0)
-        assembled[ar0:ar1, ac0:ac1] = block[
-            sbr0 : sbr0 + (ar1 - ar0), sbc0 : sbc0 + (ac1 - ac0)
-        ]
+        assembled[ar0:ar1, ac0:ac1] = block[sbr0 : sbr0 + (ar1 - ar0), sbc0 : sbc0 + (ac1 - ac0)]
 
     return reproject_array(
         np.ascontiguousarray(assembled),
@@ -161,9 +155,7 @@ def reproject_dask(
             dsk[k] = (np.full, tile_shape, fill_value, dtype)
         else:
             sr0, sr1, sc0, sc1 = plan["src_slice"]
-            indices = _slice_to_block_indices(
-                sr0, sr1, sc0, sc1, row_bounds, col_bounds
-            )
+            indices = _slice_to_block_indices(sr0, sr1, sc0, sc1, row_bounds, col_bounds)
             block_deps = tuple(src_keys[bi][bj] for bi, bj in indices)
             dsk[k] = (proc, {**plan, "_block_indices": indices}, *block_deps)
 

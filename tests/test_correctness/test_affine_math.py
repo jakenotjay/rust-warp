@@ -27,15 +27,19 @@ class TestAffineComposition:
         dst_size = size * 2
 
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            CRS_STR, dst_transform, (dst_size, dst_size),
+            src,
+            CRS_STR,
+            src_transform,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="nearest",
         )
 
         # Each src pixel should map to a 2x2 block in output
         for r in range(size):
             for c in range(size):
-                block = result[r * 2:(r + 1) * 2, c * 2:(c + 1) * 2]
+                block = result[r * 2 : (r + 1) * 2, c * 2 : (c + 1) * 2]
                 if not np.any(np.isnan(block)):
                     np.testing.assert_allclose(block, src[r, c], atol=1e-6)
 
@@ -52,8 +56,12 @@ class TestAffineComposition:
         dst_size = size // 2
 
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            CRS_STR, dst_transform, (dst_size, dst_size),
+            src,
+            CRS_STR,
+            src_transform,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="nearest",
         )
 
@@ -74,8 +82,12 @@ class TestAffineComposition:
         dst_transform = (px, 0.0, origin_x + shift * px, 0.0, -px, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            CRS_STR, dst_transform, (size, size),
+            src,
+            CRS_STR,
+            src_transform,
+            CRS_STR,
+            dst_transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -97,8 +109,10 @@ class TestAffineInverse:
         transform = (px, 0.0, origin_x, 0.0, -px, origin_y)
 
         col_grid, row_grid = transform_grid(
-            CRS_STR, transform,
-            CRS_STR, transform,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
             (size, size),
         )
 
@@ -112,8 +126,10 @@ class TestAffineInverse:
         for rows, cols in [(8, 8), (16, 32), (1, 100), (100, 1)]:
             transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0)
             col_grid, row_grid = transform_grid(
-                CRS_STR, transform,
-                CRS_STR, transform,
+                CRS_STR,
+                transform,
+                CRS_STR,
+                transform,
                 (rows, cols),
             )
             assert col_grid.shape == (rows, cols)
@@ -137,8 +153,12 @@ class TestAffineScaleVariants:
 
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            CRS_STR, dst_transform, (dst_size, dst_size),
+            src,
+            CRS_STR,
+            src_transform,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="nearest",
         )
 
@@ -146,9 +166,15 @@ class TestAffineScaleVariants:
         valid_pct = np.sum(~np.isnan(result)) / result.size * 100
         assert valid_pct > 50, f"Scale {scale}: only {valid_pct:.0f}% valid"
 
-    @pytest.mark.parametrize("scale_x,scale_y", [
-        (0.5, 2.0), (2.0, 0.5), (1.0, 3.0), (3.0, 1.0),
-    ])
+    @pytest.mark.parametrize(
+        ("scale_x", "scale_y"),
+        [
+            (0.5, 2.0),
+            (2.0, 0.5),
+            (1.0, 3.0),
+            (3.0, 1.0),
+        ],
+    )
     def test_anisotropic_scale(self, scale_x, scale_y):
         """Anisotropic scaling should produce correct output shape."""
         size = 16
@@ -164,8 +190,12 @@ class TestAffineScaleVariants:
 
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            CRS_STR, dst_transform, (dst_rows, dst_cols),
+            src,
+            CRS_STR,
+            src_transform,
+            CRS_STR,
+            dst_transform,
+            (dst_rows, dst_cols),
             resampling="nearest",
         )
 
@@ -184,8 +214,12 @@ class TestAffineNumericalStability:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -200,8 +234,12 @@ class TestAffineNumericalStability:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -217,8 +255,12 @@ class TestAffineNumericalStability:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -233,8 +275,12 @@ class TestAffineNumericalStability:
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling="nearest",
         )
 

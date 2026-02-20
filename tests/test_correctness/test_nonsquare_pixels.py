@@ -50,8 +50,12 @@ class TestNonSquareIdentity:
         src = np.arange(rows * cols, dtype=np.float64).reshape(rows, cols)
 
         result = reproject_array(
-            src, UTM_CRS, src_transform,
-            UTM_CRS, src_transform, (rows, cols),
+            src,
+            UTM_CRS,
+            src_transform,
+            UTM_CRS,
+            src_transform,
+            (rows, cols),
             resampling=kernel,
         )
 
@@ -74,8 +78,12 @@ class TestNonSquareIdentity:
         src = np.arange(rows * cols, dtype=np.float64).reshape(rows, cols)
 
         result = reproject_array(
-            src, UTM_CRS, src_transform,
-            UTM_CRS, src_transform, (rows, cols),
+            src,
+            UTM_CRS,
+            src_transform,
+            UTM_CRS,
+            src_transform,
+            (rows, cols),
             resampling=kernel,
         )
 
@@ -105,7 +113,8 @@ class TestNonSquareCrossProjection:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(UTM_CRS),
             CRS.from_user_input("EPSG:4326"),
-            cols, rows,
+            cols,
+            rows,
             left=origin_x,
             bottom=origin_y - rows * res_y,
             right=origin_x + cols * res_x,
@@ -115,13 +124,21 @@ class TestNonSquareCrossProjection:
         dst_shape = (dst_h, dst_w)
 
         rust = reproject_array(
-            src, UTM_CRS, src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            UTM_CRS,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
         gdal = _gdal_reproject(
-            src, UTM_CRS, src_transform,
-            "EPSG:4326", dst_transform, dst_shape,
+            src,
+            UTM_CRS,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling=kernel,
         )
 
@@ -136,8 +153,10 @@ class TestNonSquareCrossProjection:
             # Non-square pixels amplify interpolation differences between
             # proj4rs and PROJ; use generous tolerance
             np.testing.assert_allclose(
-                rust[both_valid], gdal[both_valid],
-                atol=30.0, rtol=0.25,
+                rust[both_valid],
+                gdal[both_valid],
+                atol=30.0,
+                rtol=0.25,
             )
 
 
@@ -154,13 +173,17 @@ class TestNonSquareScaling:
 
         # Destination: 32 rows (2x downscale Y) x 16 cols (4x downscale X)
         dst_rows, dst_cols = 32, 16
-        dst_res_x = src_px * (src_size / dst_cols)   # 400m
-        dst_res_y = src_px * (src_size / dst_rows)    # 200m
+        dst_res_x = src_px * (src_size / dst_cols)  # 400m
+        dst_res_y = src_px * (src_size / dst_rows)  # 200m
         dst_transform = (dst_res_x, 0.0, origin_x, 0.0, -dst_res_y, origin_y)
 
         result = reproject_array(
-            src, UTM_CRS, src_transform,
-            UTM_CRS, dst_transform, (dst_rows, dst_cols),
+            src,
+            UTM_CRS,
+            src_transform,
+            UTM_CRS,
+            dst_transform,
+            (dst_rows, dst_cols),
             resampling="average",
         )
 
@@ -188,8 +211,12 @@ class TestNonSquareScaling:
         dst_transform = (dst_px, 0.0, origin_x, 0.0, -dst_px, origin_y)
 
         result = reproject_array(
-            src, UTM_CRS, src_transform,
-            UTM_CRS, dst_transform, (dst_rows, dst_cols),
+            src,
+            UTM_CRS,
+            src_transform,
+            UTM_CRS,
+            dst_transform,
+            (dst_rows, dst_cols),
             resampling="bilinear",
         )
 
@@ -197,7 +224,7 @@ class TestNonSquareScaling:
         valid_pct = np.sum(~np.isnan(result)) / result.size * 100
         assert valid_pct > 50, f"Only {valid_pct:.0f}% valid"
 
-    @pytest.mark.parametrize("kernel", KERNELS + ["average"])
+    @pytest.mark.parametrize("kernel", [*KERNELS, "average"])
     def test_extreme_aspect_ratio(self, kernel):
         """Very extreme aspect ratio (10:1) should not crash."""
         rows, cols = 8, 80
@@ -207,8 +234,12 @@ class TestNonSquareScaling:
         src = np.arange(rows * cols, dtype=np.float64).reshape(rows, cols)
 
         result = reproject_array(
-            src, UTM_CRS, src_transform,
-            UTM_CRS, src_transform, (rows, cols),
+            src,
+            UTM_CRS,
+            src_transform,
+            UTM_CRS,
+            src_transform,
+            (rows, cols),
             resampling=kernel,
         )
 
@@ -231,7 +262,8 @@ class TestNonSquareGeodesic:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32633"),
-            cols, rows,
+            cols,
+            rows,
             left=14.0,
             bottom=60.0 - rows * res_y,
             right=14.0 + cols * res_x,
@@ -240,8 +272,12 @@ class TestNonSquareGeodesic:
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32633", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="bilinear",
         )
 

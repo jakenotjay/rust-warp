@@ -45,9 +45,7 @@ def compute_pyproj_grid(setup):
 
     dst_rows, dst_cols = dst_shape
 
-    transformer = pyproj.Transformer.from_crs(
-        setup["dst_crs"], setup["src_crs"], always_xy=True
-    )
+    transformer = pyproj.Transformer.from_crs(setup["dst_crs"], setup["src_crs"], always_xy=True)
 
     cols_idx = np.arange(dst_cols) + 0.5
     rows_idx = np.arange(dst_rows) + 0.5
@@ -130,8 +128,7 @@ class TestKernelIsolation:
         else:
             # Interpolating kernels should be very close with identical coordinates
             assert max_diff <= 5.0, (
-                f"[hybrid {kernel}] max_diff={max_diff:.2f} (want <=5.0), "
-                f"mean={mean_diff:.4f}"
+                f"[hybrid {kernel}] max_diff={max_diff:.2f} (want <=5.0), mean={mean_diff:.4f}"
             )
 
     @pytest.mark.parametrize(
@@ -183,9 +180,7 @@ class TestKernelIsolation:
         )
 
         # Compare both against GDAL (where all three are valid)
-        all_valid = (
-            ~np.isnan(normal_result) & ~np.isnan(hybrid_result) & ~np.isnan(gdal_result)
-        )
+        all_valid = ~np.isnan(normal_result) & ~np.isnan(hybrid_result) & ~np.isnan(gdal_result)
         if not all_valid.any():
             return
 

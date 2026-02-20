@@ -60,14 +60,22 @@ class TestGlobalToWebMercator:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(src_crs),
             CRS.from_user_input("EPSG:3857"),
-            64, 64,
-            left=-180.0, bottom=-80.0, right=180.0, top=80.0,
+            64,
+            64,
+            left=-180.0,
+            bottom=-80.0,
+            right=180.0,
+            top=80.0,
         )
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, src_crs, src_transform,
-            "EPSG:3857", dst_transform, (dst_h, dst_w),
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:3857",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
@@ -82,20 +90,32 @@ class TestGlobalToWebMercator:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(src_crs),
             CRS.from_user_input("EPSG:3857"),
-            32, 32,
-            left=-180.0, bottom=-80.0, right=180.0, top=80.0,
+            32,
+            32,
+            left=-180.0,
+            bottom=-80.0,
+            right=180.0,
+            top=80.0,
         )
         dst_transform = tuple(dst_transform_affine)[:6]
         dst_shape = (dst_h, dst_w)
 
         rust = reproject_array(
-            src, src_crs, src_transform,
-            "EPSG:3857", dst_transform, dst_shape,
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:3857",
+            dst_transform,
+            dst_shape,
             resampling="nearest",
         )
         gdal = _gdal_reproject(
-            src, src_crs, src_transform,
-            "EPSG:3857", dst_transform, dst_shape,
+            src,
+            src_crs,
+            src_transform,
+            "EPSG:3857",
+            dst_transform,
+            dst_shape,
             resampling="nearest",
         )
 
@@ -122,14 +142,22 @@ class TestPolarStereographic:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:3413"),
-            size, size,
-            left=0.0, bottom=90.0 - size * res, right=size * res, top=90.0,
+            size,
+            size,
+            left=0.0,
+            bottom=90.0 - size * res,
+            right=size * res,
+            top=90.0,
         )
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:3413", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:3413",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 
@@ -148,14 +176,22 @@ class TestPolarStereographic:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:3031"),
-            size, size,
-            left=0.0, bottom=-90.0, right=size * res, top=-60.0,
+            size,
+            size,
+            left=0.0,
+            bottom=-90.0,
+            right=size * res,
+            top=-60.0,
         )
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:3031", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:3031",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 
@@ -175,7 +211,8 @@ class TestPolarStereographic:
         mid_affine, mid_w, mid_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:3413"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -184,15 +221,23 @@ class TestPolarStereographic:
         mid_transform = tuple(mid_affine)[:6]
 
         mid = reproject_array(
-            src, "EPSG:3413", src_transform,
-            "EPSG:4326", mid_transform, (mid_h, mid_w),
+            src,
+            "EPSG:3413",
+            src_transform,
+            "EPSG:4326",
+            mid_transform,
+            (mid_h, mid_w),
             resampling="nearest",
         )
 
         # Inverse: 4326 -> polar stereo
         result = reproject_array(
-            mid, "EPSG:4326", mid_transform,
-            "EPSG:3413", src_transform, (size, size),
+            mid,
+            "EPSG:4326",
+            mid_transform,
+            "EPSG:3413",
+            src_transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -222,7 +267,8 @@ class TestCrossProjectionChains:
         direct_affine, direct_w, direct_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32633"),
             CRS.from_user_input("EPSG:3857"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -231,8 +277,12 @@ class TestCrossProjectionChains:
         direct_transform = tuple(direct_affine)[:6]
 
         direct = reproject_array(
-            src, "EPSG:32633", src_transform,
-            "EPSG:3857", direct_transform, (direct_h, direct_w),
+            src,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:3857",
+            direct_transform,
+            (direct_h, direct_w),
             resampling="bilinear",
         )
 
@@ -240,7 +290,8 @@ class TestCrossProjectionChains:
         mid_affine, mid_w, mid_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:32633"),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -249,14 +300,22 @@ class TestCrossProjectionChains:
         mid_transform = tuple(mid_affine)[:6]
 
         mid = reproject_array(
-            src, "EPSG:32633", src_transform,
-            "EPSG:4326", mid_transform, (mid_h, mid_w),
+            src,
+            "EPSG:32633",
+            src_transform,
+            "EPSG:4326",
+            mid_transform,
+            (mid_h, mid_w),
             resampling="bilinear",
         )
 
         hop2 = reproject_array(
-            mid, "EPSG:4326", mid_transform,
-            "EPSG:3857", direct_transform, (direct_h, direct_w),
+            mid,
+            "EPSG:4326",
+            mid_transform,
+            "EPSG:3857",
+            direct_transform,
+            (direct_h, direct_w),
             resampling="bilinear",
         )
 
@@ -283,14 +342,22 @@ class TestLargeExtentReprojections:
         dst_transform_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32617"),
-            size, size,
-            left=-180.0, bottom=0.0, right=0.0, top=90.0,
+            size,
+            size,
+            left=-180.0,
+            bottom=0.0,
+            right=0.0,
+            top=90.0,
         )
         dst_transform = tuple(dst_transform_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32617", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32617",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 
@@ -310,14 +377,22 @@ class TestLargeExtentReprojections:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32633"),
-            size, size,
-            left=-30.0, bottom=40.0, right=90.0, top=60.0,
+            size,
+            size,
+            left=-30.0,
+            bottom=40.0,
+            right=90.0,
+            top=60.0,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32633", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
@@ -339,14 +414,22 @@ class TestHighLatitude:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32633"),
-            size, size,
-            left=10.0, bottom=86.0 - size * res, right=10.0 + size * res, top=86.0,
+            size,
+            size,
+            left=10.0,
+            bottom=86.0 - size * res,
+            right=10.0 + size * res,
+            top=86.0,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32633", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 
@@ -363,14 +446,22 @@ class TestHighLatitude:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input("EPSG:4326"),
             CRS.from_user_input("EPSG:32633"),
-            size, size,
-            left=14.5, bottom=0.16 - size * res, right=14.5 + size * res, top=0.16,
+            size,
+            size,
+            left=14.5,
+            bottom=0.16 - size * res,
+            right=14.5 + size * res,
+            top=0.16,
         )
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, "EPSG:4326", src_transform,
-            "EPSG:32633", dst_transform, (dst_h, dst_w),
+            src,
+            "EPSG:4326",
+            src_transform,
+            "EPSG:32633",
+            dst_transform,
+            (dst_h, dst_w),
             resampling="nearest",
         )
 

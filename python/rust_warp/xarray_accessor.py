@@ -48,27 +48,29 @@ def _compute_dst_geobox(
     # Build boundary points: 21 per edge (top, bottom, left, right)
     n = 21
     ts = np.linspace(0, 1, n)
-    bx = np.concatenate([
-        left + ts * (right - left),   # top edge
-        left + ts * (right - left),   # bottom edge
-        np.full(n, left),             # left edge
-        np.full(n, right),            # right edge
-    ])
-    by = np.concatenate([
-        np.full(n, top),              # top edge
-        np.full(n, bottom),           # bottom edge
-        bottom + ts * (top - bottom), # left edge
-        bottom + ts * (top - bottom), # right edge
-    ])
+    bx = np.concatenate(
+        [
+            left + ts * (right - left),  # top edge
+            left + ts * (right - left),  # bottom edge
+            np.full(n, left),  # left edge
+            np.full(n, right),  # right edge
+        ]
+    )
+    by = np.concatenate(
+        [
+            np.full(n, top),  # top edge
+            np.full(n, bottom),  # bottom edge
+            bottom + ts * (top - bottom),  # left edge
+            bottom + ts * (top - bottom),  # right edge
+        ]
+    )
 
     dx, dy = transform_points(bx, by, src_geobox.crs, dst_crs)
 
     # Filter out non-finite points (projection failures at the edges)
     valid = np.isfinite(dx) & np.isfinite(dy)
     if not valid.any():
-        raise ValueError(
-            f"No valid projected points from {src_geobox.crs} to {dst_crs}"
-        )
+        raise ValueError(f"No valid projected points from {src_geobox.crs} to {dst_crs}")
     dx, dy = dx[valid], dy[valid]
 
     bbox = (float(dx.min()), float(dy.min()), float(dx.max()), float(dy.max()))
@@ -84,8 +86,8 @@ def _compute_dst_geobox(
     height = bbox[3] - bbox[1]
     aspect = width / height if height != 0 else 1.0
     total_pixels = src_rows * src_cols
-    dst_cols = max(1, int(round(np.sqrt(total_pixels * aspect))))
-    dst_rows = max(1, int(round(total_pixels / dst_cols)))
+    dst_cols = max(1, round(np.sqrt(total_pixels * aspect)))
+    dst_rows = max(1, round(total_pixels / dst_cols))
     return GeoBox.from_bbox(bbox, dst_crs, shape=(dst_rows, dst_cols))
 
 
@@ -122,14 +124,22 @@ def _reproject_dataarray(
 
     if data.ndim == 2:
         result_data = reproject(
-            data, src_geobox, dst_geobox,
-            resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+            data,
+            src_geobox,
+            dst_geobox,
+            resampling=resampling,
+            nodata=nodata,
+            dst_chunks=dst_chunks,
         )
     else:
         result_data = _reproject_nd(
-            data, src_geobox, dst_geobox,
+            data,
+            src_geobox,
+            dst_geobox,
             spatial_axes=spatial_axes,
-            resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+            resampling=resampling,
+            nodata=nodata,
+            dst_chunks=dst_chunks,
         )
 
     # Build new coordinates
@@ -200,12 +210,16 @@ def _reproject_nd(
         # Iterate over all combinations of non-spatial indices
         for idx in np.ndindex(*[data.shape[i] for i in non_spatial]):
             sel = [slice(None)] * ndim
-            for ax, ix in zip(non_spatial, idx):
+            for ax, ix in zip(non_spatial, idx, strict=True):
                 sel[ax] = ix
             slice_2d = data[tuple(sel)]
             reprojected = reproject(
-                slice_2d, src_geobox, dst_geobox,
-                resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+                slice_2d,
+                src_geobox,
+                dst_geobox,
+                resampling=resampling,
+                nodata=nodata,
+                dst_chunks=dst_chunks,
             )
             slices.append(reprojected)
 
@@ -217,12 +231,15 @@ def _reproject_nd(
     out = np.empty(out_shape, dtype=data.dtype)
     for idx in np.ndindex(*[data.shape[i] for i in non_spatial]):
         sel = [slice(None)] * ndim
-        for ax, ix in zip(non_spatial, idx):
+        for ax, ix in zip(non_spatial, idx, strict=True):
             sel[ax] = ix
         slice_2d = np.ascontiguousarray(data[tuple(sel)])
         reprojected = reproject(
-            slice_2d, src_geobox, dst_geobox,
-            resampling=resampling, nodata=nodata,
+            slice_2d,
+            src_geobox,
+            dst_geobox,
+            resampling=resampling,
+            nodata=nodata,
         )
         out[tuple(sel)] = reprojected
 
@@ -277,8 +294,12 @@ class WarpDataArrayAccessor:
         src_geobox = self.geobox
         dst_geobox = _compute_dst_geobox(src_geobox, dst_crs, resolution, shape)
         return _reproject_dataarray(
-            self._da, src_geobox, dst_geobox,
-            resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+            self._da,
+            src_geobox,
+            dst_geobox,
+            resampling=resampling,
+            nodata=nodata,
+            dst_chunks=dst_chunks,
         )
 
     def reproject_match(
@@ -303,8 +324,12 @@ class WarpDataArrayAccessor:
         src_geobox = self.geobox
         dst_geobox = _as_geobox(other)
         return _reproject_dataarray(
-            self._da, src_geobox, dst_geobox,
-            resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+            self._da,
+            src_geobox,
+            dst_geobox,
+            resampling=resampling,
+            nodata=nodata,
+            dst_chunks=dst_chunks,
         )
 
 
@@ -355,7 +380,11 @@ class WarpDatasetAccessor:
         src_geobox = self.geobox
         dst_geobox = _compute_dst_geobox(src_geobox, dst_crs, resolution, shape)
         return self._reproject_with_geobox(
-            src_geobox, dst_geobox, resampling, nodata, dst_chunks,
+            src_geobox,
+            dst_geobox,
+            resampling,
+            nodata,
+            dst_chunks,
         )
 
     def reproject_match(
@@ -380,7 +409,11 @@ class WarpDatasetAccessor:
         src_geobox = self.geobox
         dst_geobox = _as_geobox(other)
         return self._reproject_with_geobox(
-            src_geobox, dst_geobox, resampling, nodata, dst_chunks,
+            src_geobox,
+            dst_geobox,
+            resampling,
+            nodata,
+            dst_chunks,
         )
 
     def _reproject_with_geobox(
@@ -395,14 +428,18 @@ class WarpDatasetAccessor:
         try:
             y_dim, x_dim = _find_spatial_dims(self._ds)
         except ValueError:
-            raise ValueError("Cannot determine spatial dimensions in Dataset")
+            raise ValueError("Cannot determine spatial dimensions in Dataset") from None
 
         new_vars = {}
         for name, var in self._ds.data_vars.items():
             if y_dim in var.dims and x_dim in var.dims:
                 new_vars[name] = _reproject_dataarray(
-                    var, src_geobox, dst_geobox,
-                    resampling=resampling, nodata=nodata, dst_chunks=dst_chunks,
+                    var,
+                    src_geobox,
+                    dst_geobox,
+                    resampling=resampling,
+                    nodata=nodata,
+                    dst_chunks=dst_chunks,
                 )
             else:
                 new_vars[name] = var

@@ -35,13 +35,21 @@ class TestAlphaMaskWorkflow:
         alpha[4:-4, 4:-4] = 255.0
 
         data_out = reproject_array(
-            data, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            data,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
         alpha_out = reproject_array(
-            alpha, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            alpha,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -52,8 +60,9 @@ class TestAlphaMaskWorkflow:
             # Interior should match
             margin = 3 if kernel == "lanczos" else 2 if kernel == "cubic" else 1
             np.testing.assert_allclose(
-                alpha_out[4 + margin:-4 - margin, 4 + margin:-4 - margin],
-                255.0, atol=1e-6,
+                alpha_out[4 + margin : -4 - margin, 4 + margin : -4 - margin],
+                255.0,
+                atol=1e-6,
             )
 
     @pytest.mark.parametrize("kernel", KERNELS)
@@ -70,8 +79,12 @@ class TestAlphaMaskWorkflow:
         masked_src = np.where(alpha > 0, data, np.nan)
 
         result = reproject_array(
-            masked_src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            masked_src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -98,11 +111,19 @@ class TestRGBABandReproject:
         a_band = np.full((size, size), 255.0, dtype=np.float64)
         a_band[:4, :] = 0.0  # Transparent top rows
 
-        for band, expected_val in [(r_band, 200.0), (g_band, 100.0),
-                                    (b_band, 50.0), (a_band, None)]:
+        for band, _expected_val in [
+            (r_band, 200.0),
+            (g_band, 100.0),
+            (b_band, 50.0),
+            (a_band, None),
+        ]:
             result = reproject_array(
-                band, CRS_STR, transform,
-                CRS_STR, transform, (size, size),
+                band,
+                CRS_STR,
+                transform,
+                CRS_STR,
+                transform,
+                (size, size),
                 resampling="nearest",
             )
             np.testing.assert_array_equal(result, band)
@@ -123,20 +144,29 @@ class TestRGBABandReproject:
         data_band[alpha == 0] = np.nan
 
         data_out = reproject_array(
-            data_band, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            data_band,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
         reproject_array(
-            alpha, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            alpha,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
         if kernel == "nearest":
             # Where alpha input was 0, data should be NaN
             np.testing.assert_array_equal(
-                np.isnan(data_out), np.isnan(data_band),
+                np.isnan(data_out),
+                np.isnan(data_band),
             )
 
 
@@ -152,9 +182,14 @@ class TestUint8Alpha:
         alpha[4:-4, 4:-4] = 255
 
         result = reproject_array(
-            alpha, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
-            resampling="nearest", nodata=0.0,
+            alpha,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
+            resampling="nearest",
+            nodata=0.0,
         )
 
         assert result.dtype == np.uint8
@@ -169,9 +204,14 @@ class TestUint8Alpha:
         data[:4, :] = 0  # "transparent" region uses 0 as nodata
 
         result = reproject_array(
-            data, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
-            resampling="nearest", nodata=0.0,
+            data,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
+            resampling="nearest",
+            nodata=0.0,
         )
 
         assert result.dtype == np.uint8
@@ -191,22 +231,30 @@ class TestGreyAlpha:
         grey = np.linspace(0, 255, size * size, dtype=np.float64).reshape(size, size)
         alpha = np.ones((size, size), dtype=np.float64) * 255.0
         # Set left half to transparent
-        alpha[:, :size // 2] = 0.0
+        alpha[:, : size // 2] = 0.0
 
         grey_masked = np.where(alpha > 0, grey, np.nan)
 
         grey_out = reproject_array(
-            grey_masked, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            grey_masked,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
         reproject_array(
-            alpha, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            alpha,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
         # Where alpha input was 0, grey output should be NaN
         if kernel == "nearest":
-            assert np.all(np.isnan(grey_out[:, :size // 2]))
-            assert np.all(~np.isnan(grey_out[:, size // 2:]))
+            assert np.all(np.isnan(grey_out[:, : size // 2]))
+            assert np.all(~np.isnan(grey_out[:, size // 2 :]))

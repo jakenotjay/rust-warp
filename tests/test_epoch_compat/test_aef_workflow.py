@@ -45,10 +45,15 @@ class TestAEFWorkflow:
             )
 
         ds = xarray.Dataset(data_vars)
-        ds = ds.assign_coords(spatial_ref=xarray.DataArray(0, attrs={
-            "crs_wkt": crs,
-            "epsg": int(crs.split(":")[1]),
-        }))
+        ds = ds.assign_coords(
+            spatial_ref=xarray.DataArray(
+                0,
+                attrs={
+                    "crs_wkt": crs,
+                    "epsg": int(crs.split(":")[1]),
+                },
+            )
+        )
 
         return ds
 
@@ -80,7 +85,7 @@ class TestAEFWorkflow:
             results[var_name] = result
 
         # Each band should produce output
-        for name, result in results.items():
+        for _name, result in results.items():
             assert result.shape == (64, 64)
             assert result.dtype == np.uint8
 
@@ -117,8 +122,8 @@ class TestAEFWorkflow:
             all_results[zone] = zone_results
 
         # Each zone should produce some valid data in different parts of the output
-        for zone, results in all_results.items():
-            for name, result in results.items():
+        for _zone, results in all_results.items():
+            for _name, result in results.items():
                 assert result.shape == dst_geobox.shape
                 # At least some pixels should be valid
                 # (zones far from the output extent may have none)
@@ -173,9 +178,14 @@ class TestWarpAccessor:
                 "x": np.arange(10) * 100.0 + 500000.0,
             },
         )
-        da = da.assign_coords(spatial_ref=xarray.DataArray(0, attrs={
-            "crs_wkt": "EPSG:32633",
-            "epsg": 32633,
-        }))
+        da = da.assign_coords(
+            spatial_ref=xarray.DataArray(
+                0,
+                attrs={
+                    "crs_wkt": "EPSG:32633",
+                    "epsg": 32633,
+                },
+            )
+        )
 
         assert hasattr(da, "warp")

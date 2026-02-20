@@ -129,8 +129,8 @@ class TestGeoBoxXrCoords:
         """x and y coord arrays should match shape dimensions."""
         gbox = GeoBox.from_bbox((0, 0, 100, 200), "EPSG:32633", shape=(20, 10))
         coords = gbox.xr_coords()
-        assert len(coords["x"]) == 10   # cols
-        assert len(coords["y"]) == 20   # rows
+        assert len(coords["x"]) == 10  # cols
+        assert len(coords["y"]) == 20  # rows
 
     def test_coords_are_pixel_centers(self):
         """Coordinates should be at pixel centers (half-pixel offset from origin)."""
@@ -194,7 +194,7 @@ class TestGeoBoxFromXarrayEdgeCases:
             dims=["y", "x"],
             coords={"y": np.arange(10), "x": np.arange(10)},
         )
-        with pytest.raises(ValueError, match="[Cc]RS"):
+        with pytest.raises(ValueError, match=r"[Cc]RS"):
             GeoBox.from_xarray(da)
 
     def test_1d_array_raises(self):
@@ -202,7 +202,7 @@ class TestGeoBoxFromXarrayEdgeCases:
         import xarray as xr
 
         da = xr.DataArray(np.arange(10), dims=["x"])
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="at least 2"):
             GeoBox.from_xarray(da)
 
     def test_lat_lon_dim_names(self):

@@ -75,9 +75,20 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "PT", "RUF"]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "SIM108", # ternary operator — sometimes less readable
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]  # assert False is fine in tests
+
+[tool.ruff.format]
+# defaults are fine — matches black style
 
 [dependency-groups]
 dev = [
     "ruff>=0.15.1",
+    "pre-commit>=4.0",
 ]

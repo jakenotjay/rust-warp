@@ -83,8 +83,12 @@ class TestERA5Reprojection:
     def test_rust_warp_produces_valid_output(self, era5_europe):
         s = era5_europe
         result = reproject_array(
-            s["data"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["data"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="bilinear",
         )
         assert result.shape == s["dst_shape"]
@@ -98,8 +102,12 @@ class TestERA5Reprojection:
         # --- rust-warp ---
         t0 = time.perf_counter()
         rust_result = reproject_array(
-            s["data"], s["src_crs"], s["src_transform"],
-            s["dst_crs"], s["dst_transform"], s["dst_shape"],
+            s["data"],
+            s["src_crs"],
+            s["src_transform"],
+            s["dst_crs"],
+            s["dst_transform"],
+            s["dst_shape"],
             resampling="bilinear",
         )
         rust_time = time.perf_counter() - t0
@@ -118,8 +126,13 @@ class TestERA5Reprojection:
         odc_result = np.full(s["dst_shape"], np.nan, dtype=np.float64)
         t0 = time.perf_counter()
         rio_reproject(
-            s["data"], odc_result, src_gbox, dst_gbox,
-            resampling="bilinear", src_nodata=np.nan, dst_nodata=np.nan,
+            s["data"],
+            odc_result,
+            src_gbox,
+            dst_gbox,
+            resampling="bilinear",
+            src_nodata=np.nan,
+            dst_nodata=np.nan,
         )
         odc_time = time.perf_counter() - t0
 

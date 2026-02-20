@@ -31,7 +31,12 @@ class TestNodataPropagation:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0 + size * 100.0)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -50,8 +55,14 @@ class TestNodataPropagation:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0 + size * 100.0)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
-            resampling=kernel, nodata=-9999.0,
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
+            resampling=kernel,
+            nodata=-9999.0,
         )
 
         if kernel == "nearest":
@@ -73,7 +84,12 @@ class TestNodataPropagation:
         transform = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0 + size * 100.0)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling="nearest",
         )
 
@@ -84,7 +100,7 @@ class TestNodataPropagation:
 class TestScaling:
     """Upscale and downscale edge cases."""
 
-    @pytest.mark.parametrize("kernel", KERNELS + ["average"])
+    @pytest.mark.parametrize("kernel", [*KERNELS, "average"])
     def test_downscale_4x(self, kernel):
         """4x downsampling should produce valid output."""
         src_size = 64
@@ -99,7 +115,12 @@ class TestScaling:
         dst_transform = (dst_pixel, 0.0, origin_x, 0.0, -dst_pixel, origin_y)
 
         result = reproject_array(
-            src, CRS, src_transform, CRS, dst_transform, (dst_size, dst_size),
+            src,
+            CRS,
+            src_transform,
+            CRS,
+            dst_transform,
+            (dst_size, dst_size),
             resampling=kernel,
         )
 
@@ -123,7 +144,12 @@ class TestScaling:
         dst_transform = (dst_pixel, 0.0, origin_x, 0.0, -dst_pixel, origin_y)
 
         result = reproject_array(
-            src, CRS, src_transform, CRS, dst_transform, (dst_size, dst_size),
+            src,
+            CRS,
+            src_transform,
+            CRS,
+            dst_transform,
+            (dst_size, dst_size),
             resampling=kernel,
         )
 
@@ -138,7 +164,7 @@ class TestSmallRasters:
     """Very small rasters should not crash."""
 
     @pytest.mark.parametrize("size", [4, 8])
-    @pytest.mark.parametrize("kernel", KERNELS + ["average"])
+    @pytest.mark.parametrize("kernel", [*KERNELS, "average"])
     def test_small_identity(self, size, kernel):
         """Small raster with identity transform should not crash."""
         src = np.arange(size * size, dtype=np.float64).reshape(size, size)
@@ -147,7 +173,12 @@ class TestSmallRasters:
         transform = (pixel_size, 0.0, origin_x, 0.0, -pixel_size, origin_y)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling=kernel,
         )
         assert result.shape == (size, size)
@@ -161,7 +192,12 @@ class TestSmallRasters:
         transform = (pixel_size, 0.0, origin_x, 0.0, -pixel_size, origin_y)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling="nearest",
         )
         np.testing.assert_array_equal(result, src)
@@ -179,7 +215,12 @@ class TestAllNodataRegions:
         transform = (pixel_size, 0.0, 500000.0, 0.0, -pixel_size, origin_y)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling="nearest",
         )
         assert np.all(np.isnan(result))
@@ -194,7 +235,12 @@ class TestAllNodataRegions:
         transform = (pixel_size, 0.0, 500000.0, 0.0, -pixel_size, origin_y)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
             resampling="nearest",
         )
         # Interior should have valid data
@@ -202,7 +248,7 @@ class TestAllNodataRegions:
         # Border should be NaN
         assert np.all(np.isnan(result[0, :]))
 
-    @pytest.mark.parametrize("kernel", KERNELS + ["average"])
+    @pytest.mark.parametrize("kernel", [*KERNELS, "average"])
     def test_all_sentinel_nodata(self, kernel):
         """All-sentinel source should produce all-sentinel output."""
         size = 16
@@ -212,8 +258,14 @@ class TestAllNodataRegions:
         transform = (pixel_size, 0.0, 500000.0, 0.0, -pixel_size, origin_y)
 
         result = reproject_array(
-            src, CRS, transform, CRS, transform, (size, size),
-            resampling=kernel, nodata=-9999.0,
+            src,
+            CRS,
+            transform,
+            CRS,
+            transform,
+            (size, size),
+            resampling=kernel,
+            nodata=-9999.0,
         )
         # All output should be nodata (either -9999 or NaN depending on implementation)
         is_nodata = (result == -9999.0) | np.isnan(result)

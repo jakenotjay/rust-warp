@@ -20,8 +20,9 @@ def _make_identity_transform(size, pixel_size=100.0):
     return (pixel_size, 0.0, 500000.0, 0.0, -pixel_size, origin_y)
 
 
-def _gdal_reproject(src, src_crs, src_transform, dst_crs, dst_transform, dst_shape,
-                    resampling, nodata=np.nan):
+def _gdal_reproject(
+    src, src_crs, src_transform, dst_crs, dst_transform, dst_shape, resampling, nodata=np.nan
+):
     resampling_map = {
         "nearest": rasterio.warp.Resampling.nearest,
         "bilinear": rasterio.warp.Resampling.bilinear,
@@ -69,8 +70,12 @@ class TestAverageNodataHandling:
         dst_transform = (dst_px, 0.0, 500000.0, 0.0, -dst_px, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform_src,
-            CRS_STR, dst_transform, (dst_size, dst_size),
+            src,
+            CRS_STR,
+            transform_src,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="average",
         )
 
@@ -88,7 +93,7 @@ class TestAverageNodataHandling:
         # Set half of each 4x4 block to NaN (scattered pattern)
         for r in range(0, src_size, 4):
             for c in range(0, src_size, 4):
-                src[r:r+2, c:c+2] = np.nan
+                src[r : r + 2, c : c + 2] = np.nan
 
         transform_src = _make_identity_transform(src_size)
         dst_px = 100.0 * (src_size / dst_size)
@@ -96,8 +101,12 @@ class TestAverageNodataHandling:
         dst_transform = (dst_px, 0.0, 500000.0, 0.0, -dst_px, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform_src,
-            CRS_STR, dst_transform, (dst_size, dst_size),
+            src,
+            CRS_STR,
+            transform_src,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
             resampling="average",
         )
 
@@ -118,18 +127,21 @@ class TestAverageNodataHandling:
         dst_transform = (dst_px, 0.0, 500000.0, 0.0, -dst_px, origin_y)
 
         result = reproject_array(
-            src, CRS_STR, transform_src,
-            CRS_STR, dst_transform, (dst_size, dst_size),
-            resampling="average", nodata=-9999.0,
+            src,
+            CRS_STR,
+            transform_src,
+            CRS_STR,
+            dst_transform,
+            (dst_size, dst_size),
+            resampling="average",
+            nodata=-9999.0,
         )
 
         # Top-left corner of output corresponds to src[0:8,0:8] which is all nodata
         # Check [0,0] — the center of the all-nodata block
         tl_val = result[0, 0]
         is_nodata = (tl_val == -9999.0) or np.isnan(tl_val)
-        assert is_nodata, (
-            f"Center of all-nodata block has value {tl_val}, expected -9999 or NaN"
-        )
+        assert is_nodata, f"Center of all-nodata block has value {tl_val}, expected -9999 or NaN"
 
 
 class TestNodataAtBoundaries:
@@ -150,7 +162,8 @@ class TestNodataAtBoundaries:
         dst_affine, dst_w, dst_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(CRS_STR),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -159,8 +172,12 @@ class TestNodataAtBoundaries:
         dst_transform = tuple(dst_affine)[:6]
 
         result = reproject_array(
-            src, CRS_STR, src_transform,
-            "EPSG:4326", dst_transform, (dst_h, dst_w),
+            src,
+            CRS_STR,
+            src_transform,
+            "EPSG:4326",
+            dst_transform,
+            (dst_h, dst_w),
             resampling=kernel,
         )
 
@@ -179,8 +196,12 @@ class TestNodataAtBoundaries:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -197,8 +218,12 @@ class TestNodataAtBoundaries:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -220,8 +245,12 @@ class TestNodataPatterns:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -242,8 +271,12 @@ class TestNodataPatterns:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
             resampling=kernel,
         )
 
@@ -263,8 +296,12 @@ class TestNodataPatterns:
 
         for kernel in KERNELS:
             result = reproject_array(
-                src, CRS_STR, transform,
-                CRS_STR, transform, (size, size),
+                src,
+                CRS_STR,
+                transform,
+                CRS_STR,
+                transform,
+                (size, size),
                 resampling=kernel,
             )
             assert result.shape == (size, size)
@@ -275,7 +312,7 @@ class TestNodataPatterns:
 class TestSentinelNodataValues:
     """Different sentinel nodata values across data types."""
 
-    @pytest.mark.parametrize("nodata_val", [0.0, -9999.0, -1e38, 9.969209968386869e+36])
+    @pytest.mark.parametrize("nodata_val", [0.0, -9999.0, -1e38, 9.969209968386869e36])
     def test_float64_sentinel_values(self, nodata_val):
         """Various float64 sentinel values should round-trip through nearest."""
         size = 16
@@ -284,24 +321,30 @@ class TestSentinelNodataValues:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
-            resampling="nearest", nodata=nodata_val,
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
+            resampling="nearest",
+            nodata=nodata_val,
         )
 
-        assert np.all(result[4:8, 4:8] == nodata_val), (
-            f"Sentinel {nodata_val} not preserved"
-        )
+        assert np.all(result[4:8, 4:8] == nodata_val), f"Sentinel {nodata_val} not preserved"
         assert np.all(result[0:4, 0:4] == 42.0)
 
-    @pytest.mark.parametrize("dtype,nodata_val", [
-        (np.uint8, 0),
-        (np.uint8, 255),
-        (np.uint16, 0),
-        (np.uint16, 65535),
-        (np.int16, -9999),
-        (np.int16, -32768),
-    ])
+    @pytest.mark.parametrize(
+        ("dtype", "nodata_val"),
+        [
+            (np.uint8, 0),
+            (np.uint8, 255),
+            (np.uint16, 0),
+            (np.uint16, 65535),
+            (np.int16, -9999),
+            (np.int16, -32768),
+        ],
+    )
     def test_integer_sentinel_values(self, dtype, nodata_val):
         """Integer sentinel values should be preserved through nearest."""
         size = 8
@@ -310,9 +353,14 @@ class TestSentinelNodataValues:
         transform = _make_identity_transform(size)
 
         result = reproject_array(
-            src, CRS_STR, transform,
-            CRS_STR, transform, (size, size),
-            resampling="nearest", nodata=float(nodata_val),
+            src,
+            CRS_STR,
+            transform,
+            CRS_STR,
+            transform,
+            (size, size),
+            resampling="nearest",
+            nodata=float(nodata_val),
         )
 
         assert result.dtype == dtype
@@ -338,7 +386,8 @@ class TestNodataCrossCRSConsistency:
         mid_affine, mid_w, mid_h = rasterio.warp.calculate_default_transform(
             CRS.from_user_input(CRS_STR),
             CRS.from_user_input("EPSG:4326"),
-            size, size,
+            size,
+            size,
             left=origin_x,
             bottom=origin_y - size * pixel_size,
             right=origin_x + size * pixel_size,
@@ -347,15 +396,23 @@ class TestNodataCrossCRSConsistency:
         mid_transform = tuple(mid_affine)[:6]
 
         mid = reproject_array(
-            src, CRS_STR, src_transform,
-            "EPSG:4326", mid_transform, (mid_h, mid_w),
+            src,
+            CRS_STR,
+            src_transform,
+            "EPSG:4326",
+            mid_transform,
+            (mid_h, mid_w),
             resampling=kernel,
         )
 
         # 4326 -> UTM
         result = reproject_array(
-            mid, "EPSG:4326", mid_transform,
-            CRS_STR, src_transform, (size, size),
+            mid,
+            "EPSG:4326",
+            mid_transform,
+            CRS_STR,
+            src_transform,
+            (size, size),
             resampling=kernel,
         )
 

@@ -66,7 +66,8 @@ class TestGeoBox:
             affine=(100.0, 0.0, 500000.0, 0.0, -100.0, 6000400.0),
         )
         coords = gbox.xr_coords()
-        assert "x" in coords and "y" in coords
+        assert "x" in coords
+        assert "y" in coords
         assert len(coords["x"]) == 4
         assert len(coords["y"]) == 4
         # First pixel center should be at origin + 0.5 * pixel_size
@@ -102,14 +103,22 @@ class TestReprojectDask:
 
         # Numpy path
         expected = reproject_array(
-            src_np, SRC_CRS, SRC_TRANSFORM, SRC_CRS, SRC_TRANSFORM, SRC_SHAPE,
+            src_np,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_SHAPE,
             resampling="nearest",
         )
 
         # Dask path
         result = reproject(
-            src_dask, SRC_GEOBOX, dst_geobox,
-            resampling="nearest", dst_chunks=(32, 32),
+            src_dask,
+            SRC_GEOBOX,
+            dst_geobox,
+            resampling="nearest",
+            dst_chunks=(32, 32),
         )
         result_np = result.compute()
 
@@ -127,14 +136,22 @@ class TestReprojectDask:
 
         # Numpy path
         expected = reproject_array(
-            src_np, SRC_CRS, SRC_TRANSFORM, "EPSG:4326", dst_transform, dst_shape,
+            src_np,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            "EPSG:4326",
+            dst_transform,
+            dst_shape,
             resampling="nearest",
         )
 
         # Dask path
         result = reproject(
-            src_dask, SRC_GEOBOX, dst_geobox,
-            resampling="nearest", dst_chunks=(32, 32),
+            src_dask,
+            SRC_GEOBOX,
+            dst_geobox,
+            resampling="nearest",
+            dst_chunks=(32, 32),
         )
         result_np = result.compute()
 
@@ -157,8 +174,11 @@ class TestReprojectDask:
         for chunks in [(16, 16), (32, 32), (64, 64)]:
             src_dask = da.from_array(src_np, chunks=chunks)
             result = reproject(
-                src_dask, SRC_GEOBOX, dst_geobox,
-                resampling="nearest", dst_chunks=chunks,
+                src_dask,
+                SRC_GEOBOX,
+                dst_geobox,
+                resampling="nearest",
+                dst_chunks=chunks,
             )
             results.append(result.compute())
 
@@ -177,13 +197,21 @@ class TestReprojectDask:
         dst_geobox = GeoBox(crs=SRC_CRS, shape=SRC_SHAPE, affine=SRC_TRANSFORM)
 
         expected = reproject_array(
-            src_np, SRC_CRS, SRC_TRANSFORM, SRC_CRS, SRC_TRANSFORM, SRC_SHAPE,
+            src_np,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_SHAPE,
             resampling="bilinear",
         )
 
         result = reproject(
-            src_dask, SRC_GEOBOX, dst_geobox,
-            resampling="bilinear", dst_chunks=(32, 32),
+            src_dask,
+            SRC_GEOBOX,
+            dst_geobox,
+            resampling="bilinear",
+            dst_chunks=(32, 32),
         )
         result_np = result.compute()
 
@@ -193,15 +221,15 @@ class TestReprojectDask:
         result_nan = np.isnan(result_np)
         nan_mismatch = np.sum(expected_nan != result_nan)
         total = expected_nan.size
-        assert nan_mismatch / total < 0.01, (
-            f"NaN pattern mismatch: {nan_mismatch}/{total} pixels"
-        )
+        assert nan_mismatch / total < 0.01, f"NaN pattern mismatch: {nan_mismatch}/{total} pixels"
 
         # Where both produce values, they must agree
         both_valid = ~expected_nan & ~result_nan
         if both_valid.any():
             np.testing.assert_allclose(
-                result_np[both_valid], expected[both_valid], atol=1e-10,
+                result_np[both_valid],
+                expected[both_valid],
+                atol=1e-10,
             )
 
     def test_has_data_false_tiles_filled_with_nodata(self):
@@ -221,8 +249,11 @@ class TestReprojectDask:
         )
 
         result = reproject(
-            src_dask, src_geobox, dst_geobox,
-            resampling="nearest", dst_chunks=(32, 32),
+            src_dask,
+            src_geobox,
+            dst_geobox,
+            resampling="nearest",
+            dst_chunks=(32, 32),
         )
         result_np = result.compute()
 
@@ -240,12 +271,20 @@ class TestReprojectNumpy:
         dst_geobox = GeoBox(crs=SRC_CRS, shape=SRC_SHAPE, affine=SRC_TRANSFORM)
 
         expected = reproject_array(
-            src_np, SRC_CRS, SRC_TRANSFORM, SRC_CRS, SRC_TRANSFORM, SRC_SHAPE,
+            src_np,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_CRS,
+            SRC_TRANSFORM,
+            SRC_SHAPE,
             resampling="nearest",
         )
 
         result = reproject(
-            src_np, SRC_GEOBOX, dst_geobox, resampling="nearest",
+            src_np,
+            SRC_GEOBOX,
+            dst_geobox,
+            resampling="nearest",
         )
 
         assert isinstance(result, np.ndarray)
