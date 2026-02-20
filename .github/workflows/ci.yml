@@ -50,7 +50,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Build extension
-        run: uv run maturin develop
+        run: uv run --with maturin maturin develop
 
       - name: Lint Python
         run: uv run ruff check python/ tests/
