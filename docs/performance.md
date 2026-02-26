@@ -100,28 +100,33 @@ Native projections are significantly faster than the proj4rs fallback due to avo
 | 16 | 153 us |
 | 64 | 612 us |
 | 256 | 2.46 ms |
+| 1024 | ~10 ms |
 
 Planning overhead is negligible relative to compute time for all practical tile counts.
+The footprint prefilter (see Optimization Details) reduces planning time substantially when
+the source covers only a small fraction of the destination grid.
 
 ## Optimization Details
 
 ### What makes rust-warp fast
 
-1. **Rayon parallelism** — the warp loop distributes output rows across all available CPU cores. Each row is independent (shared source read, disjoint output write), so there's no synchronization overhead.
+1. **Rayon parallelism** — the warp loop distributes output rows across all available CPU cores. Each row is independent (shared source read, disjoint output write), so there's no synchronization overhead. `plan_tiles` also parallelises tile planning across Rayon threads, which matters for large tile grids (1024+ tiles).
 
-2. **Linear approximation** — instead of computing exact projection transforms for every pixel, `LinearApprox` computes 3 exact points per scanline and linearly interpolates between them. For near-linear transforms (UTM, Web Mercator), this reduces projection calls by ~50-100x per row. Recursive subdivision ensures accuracy never exceeds 0.125 pixels.
+2. **Source footprint prefilter** — before planning individual tiles, `plan_tiles` projects the source image boundary into destination pixel space to compute an AABB. Destination tiles whose pixel bbox lies entirely outside this AABB are fast-rejected without any per-tile projection work. For sparse overlap cases (small source, large destination grid) this eliminates the projection cost for the vast majority of tiles.
 
-3. **Native projection math** — for common CRSes (all UTM zones, Web Mercator, Equirectangular), rust-warp uses hand-written Rust implementations that avoid the overhead of PROJ string parsing and generic dispatch.
+3. **Linear approximation** — instead of computing exact projection transforms for every pixel, `LinearApprox` computes 3 exact points per scanline and linearly interpolates between them. For near-linear transforms (UTM, Web Mercator), this reduces projection calls by ~50-100x per row. Recursive subdivision ensures accuracy never exceeds 0.125 pixels.
 
-4. **Polynomial sin approximation** — the Lanczos kernel replaces `sin()` calls with a degree-11 Taylor polynomial (max error ~6e-8), avoiding expensive transcendental function calls in the inner loop.
+4. **Native projection math** — for common CRSes (all UTM zones, Web Mercator, Equirectangular), rust-warp uses hand-written Rust implementations that avoid the overhead of PROJ string parsing and generic dispatch.
 
-5. **Weight precomputation** — cubic and average kernels precompute 1D weight arrays before the 2D convolution loop, reducing redundant `cubic_weight()` calls from 16 to 8 (cubic) and eliminating redundant overlap calculations (average).
+5. **Polynomial sin approximation** — the Lanczos kernel replaces `sin()` calls with a degree-11 Taylor polynomial (max error ~6e-8), avoiding expensive transcendental function calls in the inner loop.
 
-6. **`target-cpu=native`** — enables NEON (Apple Silicon) or AVX2 (x86_64) auto-vectorization for the inner loop. LLVM vectorizes bilinear's 4-point weighted sum and the linear interpolation path.
+6. **Weight precomputation** — cubic and average kernels precompute 1D weight arrays before the 2D convolution loop, reducing redundant `cubic_weight()` calls from 16 to 8 (cubic) and eliminating redundant overlap calculations (average).
 
-7. **HighLevelGraph construction** — the dask graph builder references source blocks by key rather than embedding task subgraphs, making graph construction O(tiles) instead of O(tiles * source_graph_size).
+7. **`target-cpu=native`** — enables NEON (Apple Silicon) or AVX2 (x86_64) auto-vectorization for the inner loop. LLVM vectorizes bilinear's 4-point weighted sum and the linear interpolation path.
 
-8. **GIL release** — all computation runs outside the Python GIL, so multiple Python threads can reproject concurrently and dask's threaded scheduler works efficiently.
+8. **HighLevelGraph construction** — the dask graph builder references source blocks by key rather than embedding task subgraphs, making graph construction O(tiles) instead of O(tiles * source_graph_size).
+
+9. **GIL release** — all computation runs outside the Python GIL, so multiple Python threads can reproject concurrently and dask's threaded scheduler works efficiently.
 
 ### Network-bound regime
 
