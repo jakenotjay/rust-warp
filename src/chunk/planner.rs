@@ -1,5 +1,7 @@
 //! Chunk planner: maps destination tiles to source ROIs for chunked reprojection.
 
+use rayon::prelude::*;
+
 use crate::affine::Affine;
 use crate::error::PlanError;
 use crate::proj::pipeline::Pipeline;
@@ -75,10 +77,212 @@ fn tile_boundary_points(
     points
 }
 
+/// Project the source image boundary into dst pixel space.
+///
+/// Used as a cheap pre-filter: any destination tile whose pixel bbox lies entirely
+/// outside this AABB can be immediately marked `has_data = false` without firing
+/// per-tile projection calls.
+///
+/// Returns `Some((min_row, max_row, min_col, max_col))` in dst pixel coordinates,
+/// or `None` if the source has no coverage within the destination image bounds
+/// (including the case where the projection fails for all boundary points).
+fn src_footprint_in_dst_pixels(
+    src_crs: &str,
+    src_transform: &Affine,
+    src_shape: (usize, usize),
+    dst_crs: &str,
+    dst_transform: &Affine,
+    dst_shape: (usize, usize),
+    pts_per_edge: usize,
+) -> Option<(f64, f64, f64, f64)> {
+    // Forward pipeline: src CRS → dst CRS.
+    // Swapping args so transform_inv(src_x, src_y) → (dst_x, dst_y).
+    let fwd = Pipeline::new(dst_crs, src_crs).ok()?;
+    let dst_inv = dst_transform.inverse().ok()?;
+
+    let boundary = tile_boundary_points(0, src_shape.0, 0, src_shape.1, pts_per_edge);
+
+    let mut min_col = f64::INFINITY;
+    let mut max_col = f64::NEG_INFINITY;
+    let mut min_row = f64::INFINITY;
+    let mut max_row = f64::NEG_INFINITY;
+    let mut count = 0usize;
+
+    for &(sc, sr) in &boundary {
+        // src pixel → src CRS
+        let (sx, sy) = src_transform.forward(sc, sr);
+        // src CRS → dst CRS
+        if let Ok((dx, dy)) = fwd.transform_inv(sx, sy) {
+            // dst CRS → dst pixel
+            let (dc, dr) = dst_inv.forward(dx, dy);
+            if dc.is_finite() && dr.is_finite() {
+                min_col = min_col.min(dc);
+                max_col = max_col.max(dc);
+                min_row = min_row.min(dr);
+                max_row = max_row.max(dr);
+                count += 1;
+            }
+        }
+    }
+
+    if count == 0 {
+        return None;
+    }
+
+    // Return None if the AABB lies entirely outside the destination image bounds.
+    // This avoids a spurious Some when the source projects to valid dst CRS coords
+    // but those coords are far outside the actual destination image.
+    let (dst_rows, dst_cols) = dst_shape;
+    if max_row < 0.0
+        || min_row > dst_rows as f64
+        || max_col < 0.0
+        || min_col > dst_cols as f64
+    {
+        return None;
+    }
+
+    Some((min_row, max_row, min_col, max_col))
+}
+
+/// Compute the plan for a single destination tile.
+///
+/// Extracted from the `plan_tiles` loop so it can be called from `par_iter`.
+/// All arguments are either `Copy` or immutable references to `Send + Sync` types.
+#[allow(clippy::too_many_arguments)]
+fn plan_single_tile(
+    row0: usize,
+    col0: usize,
+    tile_h: usize,
+    tile_w: usize,
+    dst_rows: usize,
+    dst_cols: usize,
+    pipeline: &Pipeline,
+    src_transform: &Affine,
+    src_inv: &Affine,
+    dst_transform: &Affine,
+    src_shape: (usize, usize),
+    kernel_radius: usize,
+    pts_per_edge: usize,
+    footprint: Option<(f64, f64, f64, f64)>,
+) -> Result<TilePlan, PlanError> {
+    let (src_rows, src_cols) = src_shape;
+    let row1 = (row0 + tile_h).min(dst_rows);
+    let col1 = (col0 + tile_w).min(dst_cols);
+
+    // Shifted dst affine for this tile (origin at tile top-left pixel).
+    let (dst_ox, dst_oy) = dst_transform.forward(col0 as f64, row0 as f64);
+    let dst_tile_transform = Affine::new(
+        dst_transform.a,
+        dst_transform.b,
+        dst_ox,
+        dst_transform.d,
+        dst_transform.e,
+        dst_oy,
+    );
+    let dst_tile_shape = (row1 - row0, col1 - col0);
+
+    // Fast rejection: tile bbox is entirely outside the source footprint AABB.
+    // Expand the footprint by the kernel halo so we never reject a tile that
+    // is only needed for halo pixels of an adjacent in-bounds tile.
+    let halo = kernel_radius as f64;
+    if let Some((fp_rmin, fp_rmax, fp_cmin, fp_cmax)) = footprint {
+        if (row1 as f64) <= fp_rmin - halo
+            || (row0 as f64) >= fp_rmax + halo
+            || (col1 as f64) <= fp_cmin - halo
+            || (col0 as f64) >= fp_cmax + halo
+        {
+            let src_tile_transform = Affine::new(
+                src_transform.a,
+                src_transform.b,
+                src_transform.c,
+                src_transform.d,
+                src_transform.e,
+                src_transform.f,
+            );
+            return Ok(TilePlan {
+                dst_slice: (row0, row1, col0, col1),
+                src_slice: (0, 0, 0, 0),
+                src_transform: src_tile_transform,
+                dst_transform: dst_tile_transform,
+                dst_tile_shape,
+                has_data: false,
+            });
+        }
+    }
+
+    // Sample boundary points of this destination tile and project dst → src.
+    let boundary = tile_boundary_points(row0, row1, col0, col1, pts_per_edge);
+
+    let mut min_src_col = f64::INFINITY;
+    let mut max_src_col = f64::NEG_INFINITY;
+    let mut min_src_row = f64::INFINITY;
+    let mut max_src_row = f64::NEG_INFINITY;
+    let mut valid_count = 0usize;
+
+    for &(col_px, row_px) in &boundary {
+        // Pixel coords → dst CRS coords
+        let (dx, dy) = dst_transform.forward(col_px, row_px);
+
+        // dst CRS → src CRS
+        if let Ok((sx, sy)) = pipeline.transform_inv(dx, dy) {
+            // src CRS → src pixel coords
+            let (sc, sr) = src_inv.forward(sx, sy);
+
+            if sc.is_finite() && sr.is_finite() {
+                min_src_col = min_src_col.min(sc);
+                max_src_col = max_src_col.max(sc);
+                min_src_row = min_src_row.min(sr);
+                max_src_row = max_src_row.max(sr);
+                valid_count += 1;
+            }
+        }
+    }
+
+    let has_data;
+    let src_slice;
+
+    if valid_count == 0 {
+        // No valid projections — tile is fully outside source extent.
+        has_data = false;
+        src_slice = (0, 0, 0, 0);
+    } else {
+        // Expand by kernel radius (halo) and clip to source bounds.
+        let sr0 = (min_src_row - halo).floor().max(0.0) as usize;
+        let sr1 = ((max_src_row + halo).ceil() as usize + 1).min(src_rows);
+        let sc0 = (min_src_col - halo).floor().max(0.0) as usize;
+        let sc1 = ((max_src_col + halo).ceil() as usize + 1).min(src_cols);
+
+        has_data = sr1 > sr0 && sc1 > sc0;
+        src_slice = (sr0, sr1, sc0, sc1);
+    }
+
+    let (src_sr0, _, src_sc0, _) = src_slice;
+    let (src_ox, src_oy) = src_transform.forward(src_sc0 as f64, src_sr0 as f64);
+    let src_tile_transform = Affine::new(
+        src_transform.a,
+        src_transform.b,
+        src_ox,
+        src_transform.d,
+        src_transform.e,
+        src_oy,
+    );
+
+    Ok(TilePlan {
+        dst_slice: (row0, row1, col0, col1),
+        src_slice,
+        src_transform: src_tile_transform,
+        dst_transform: dst_tile_transform,
+        dst_tile_shape,
+        has_data,
+    })
+}
+
 /// Plan tile-level reprojection from source to destination grids.
 ///
 /// Divides the destination grid into tiles of `dst_tile_size` and for each tile,
 /// computes the corresponding source ROI (with halo padding for the resampling kernel).
+/// Tiles are planned in parallel using Rayon; output order is row-major (same as
+/// sequential).
 #[allow(clippy::too_many_arguments)]
 pub fn plan_tiles(
     src_crs: &str,
@@ -92,114 +296,100 @@ pub fn plan_tiles(
     pts_per_edge: usize,
 ) -> Result<Vec<TilePlan>, PlanError> {
     let (dst_rows, dst_cols) = dst_shape;
-    let (src_rows, src_cols) = src_shape;
     let (tile_h, tile_w) = dst_tile_size;
 
     if tile_h == 0 || tile_w == 0 {
         return Err(PlanError::General("Tile size must be > 0".into()));
     }
 
-    // Build pipeline: src_crs → dst_crs. We use transform_inv to go dst→src.
+    // Build pipeline: src_crs → dst_crs. transform_inv goes dst→src.
     let pipeline = Pipeline::new(src_crs, dst_crs)?;
 
     let src_inv = src_transform
         .inverse()
         .map_err(|e| PlanError::General(e.to_string()))?;
 
-    let mut plans = Vec::new();
+    // Compute source footprint in dst pixel space once up front.
+    // Returns None when the source has zero coverage in the destination image,
+    // which lets us skip all per-tile projection work entirely.
+    let footprint = src_footprint_in_dst_pixels(
+        src_crs,
+        src_transform,
+        src_shape,
+        dst_crs,
+        dst_transform,
+        dst_shape,
+        pts_per_edge,
+    );
 
-    let mut row0 = 0;
-    while row0 < dst_rows {
-        let row1 = (row0 + tile_h).min(dst_rows);
+    // Pre-generate tile (row0, col0) pairs in row-major order.
+    // Vec::into_par_iter() is an IndexedParallelIterator, so collect() below
+    // preserves this ordering despite parallel execution.
+    let row_starts: Vec<usize> = (0..)
+        .map(|i| i * tile_h)
+        .take_while(|&r| r < dst_rows)
+        .collect();
+    let col_starts: Vec<usize> = (0..)
+        .map(|i| i * tile_w)
+        .take_while(|&c| c < dst_cols)
+        .collect();
 
-        let mut col0 = 0;
-        while col0 < dst_cols {
-            let col1 = (col0 + tile_w).min(dst_cols);
+    let tile_coords: Vec<(usize, usize)> = row_starts
+        .iter()
+        .flat_map(|&r| col_starts.iter().map(move |&c| (r, c)))
+        .collect();
 
-            let boundary = tile_boundary_points(row0, row1, col0, col1, pts_per_edge);
-
-            let mut min_src_col = f64::INFINITY;
-            let mut max_src_col = f64::NEG_INFINITY;
-            let mut min_src_row = f64::INFINITY;
-            let mut max_src_row = f64::NEG_INFINITY;
-            let mut valid_count = 0usize;
-
-            for &(col_px, row_px) in &boundary {
-                // Pixel coords → dst CRS coords
-                let (dx, dy) = dst_transform.forward(col_px, row_px);
-
-                // dst CRS → src CRS
-                if let Ok((sx, sy)) = pipeline.transform_inv(dx, dy) {
-                    // src CRS → src pixel coords
-                    let (sc, sr) = src_inv.forward(sx, sy);
-
-                    if sc.is_finite() && sr.is_finite() {
-                        min_src_col = min_src_col.min(sc);
-                        max_src_col = max_src_col.max(sc);
-                        min_src_row = min_src_row.min(sr);
-                        max_src_row = max_src_row.max(sr);
-                        valid_count += 1;
-                    }
+    // Fast path: source has no coverage in the destination image.
+    // Generate all-nodata plans without any projection calls.
+    if footprint.is_none() {
+        return Ok(tile_coords
+            .iter()
+            .map(|&(r0, c0)| {
+                let r1 = (r0 + tile_h).min(dst_rows);
+                let c1 = (c0 + tile_w).min(dst_cols);
+                let (dst_ox, dst_oy) = dst_transform.forward(c0 as f64, r0 as f64);
+                let dst_tile_transform = Affine::new(
+                    dst_transform.a,
+                    dst_transform.b,
+                    dst_ox,
+                    dst_transform.d,
+                    dst_transform.e,
+                    dst_oy,
+                );
+                TilePlan {
+                    dst_slice: (r0, r1, c0, c1),
+                    src_slice: (0, 0, 0, 0),
+                    src_transform: *src_transform,
+                    dst_transform: dst_tile_transform,
+                    dst_tile_shape: (r1 - r0, c1 - c0),
+                    has_data: false,
                 }
-            }
-
-            let has_data;
-            let src_slice;
-
-            if valid_count == 0 {
-                // No valid projections — tile is fully outside source extent
-                has_data = false;
-                src_slice = (0, 0, 0, 0);
-            } else {
-                // Expand by kernel radius (halo)
-                let halo = kernel_radius as f64;
-                let sr0 = (min_src_row - halo).floor().max(0.0) as usize;
-                let sr1 = ((max_src_row + halo).ceil() as usize + 1).min(src_rows);
-                let sc0 = (min_src_col - halo).floor().max(0.0) as usize;
-                let sc1 = ((max_src_col + halo).ceil() as usize + 1).min(src_cols);
-
-                has_data = sr1 > sr0 && sc1 > sc0;
-                src_slice = (sr0, sr1, sc0, sc1);
-            }
-
-            // Compute shifted affines
-            let (dr0, _, dc0, _) = (row0, row1, col0, col1);
-            let (dst_ox, dst_oy) = dst_transform.forward(dc0 as f64, dr0 as f64);
-            let dst_tile_transform = Affine::new(
-                dst_transform.a,
-                dst_transform.b,
-                dst_ox,
-                dst_transform.d,
-                dst_transform.e,
-                dst_oy,
-            );
-
-            let (src_sr0, _, src_sc0, _) = src_slice;
-            let (src_ox, src_oy) = src_transform.forward(src_sc0 as f64, src_sr0 as f64);
-            let src_tile_transform = Affine::new(
-                src_transform.a,
-                src_transform.b,
-                src_ox,
-                src_transform.d,
-                src_transform.e,
-                src_oy,
-            );
-
-            plans.push(TilePlan {
-                dst_slice: (row0, row1, col0, col1),
-                src_slice,
-                src_transform: src_tile_transform,
-                dst_transform: dst_tile_transform,
-                dst_tile_shape: (row1 - row0, col1 - col0),
-                has_data,
-            });
-
-            col0 = col1;
-        }
-        row0 = row1;
+            })
+            .collect());
     }
 
-    Ok(plans)
+    // All captured values are either Copy or &T where T: Sync — closure is Send.
+    tile_coords
+        .into_par_iter()
+        .map(|(row0, col0)| {
+            plan_single_tile(
+                row0,
+                col0,
+                tile_h,
+                tile_w,
+                dst_rows,
+                dst_cols,
+                &pipeline,
+                src_transform,
+                &src_inv,
+                dst_transform,
+                src_shape,
+                kernel_radius,
+                pts_per_edge,
+                footprint,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
 
 #[cfg(test)]
@@ -475,5 +665,145 @@ mod tests {
             8,
         );
         assert!(result.is_err());
+    }
+
+    // --- New tests ---
+
+    #[test]
+    fn test_src_footprint_helper_same_crs() {
+        // Same CRS: source footprint in dst pixel space should approximately cover
+        // the source image extent [0, src_rows] x [0, src_cols].
+        let transform = utm33_affine();
+        let src_shape = (64, 64);
+
+        let fp = src_footprint_in_dst_pixels(
+            "EPSG:32633",
+            &transform,
+            src_shape,
+            "EPSG:32633",
+            &transform,
+            src_shape,
+            8,
+        );
+
+        assert!(fp.is_some(), "Same-CRS footprint must be Some");
+        let (min_row, max_row, min_col, max_col) = fp.unwrap();
+        // Same transform → footprint should be roughly the source pixel bounds
+        assert!(min_row <= 1.0, "min_row={min_row}");
+        assert!(max_row >= 63.0, "max_row={max_row}");
+        assert!(min_col <= 1.0, "min_col={min_col}");
+        assert!(max_col >= 63.0, "max_col={max_col}");
+    }
+
+    #[test]
+    fn test_src_footprint_helper_no_overlap() {
+        // Source in UTM 33N (Northern Europe), destination in southern hemisphere.
+        // The source projects to valid geographic coords (~15°E, ~59°N) but those
+        // coords map to dst pixel (~195, ~-119) which is outside the 4x4 destination.
+        let src_transform = utm33_affine();
+        let src_shape = (4, 4);
+        let dst_transform = Affine::new(1.0, 0.0, -180.0, 0.0, -1.0, -60.0);
+        let dst_shape = (4, 4);
+
+        let fp = src_footprint_in_dst_pixels(
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            8,
+        );
+
+        assert!(fp.is_none(), "Non-overlapping footprint must be None");
+    }
+
+    #[test]
+    fn test_prefilter_skips_clearly_outside_tiles() {
+        // Small source (64x64 pixels) in UTM 33N.
+        // Large destination grid in geographic coords that extends far beyond the source.
+        // The destination spans 0°–40°E, 40°–70°N in 1° tiles.
+        let src_transform = utm33_affine();
+        let src_shape = (64, 64);
+        // Destination: 30 rows x 40 cols at 1-degree resolution, covering 40°–70°N, 0°–40°E
+        let dst_transform = Affine::new(1.0, 0.0, 0.0, 0.0, -1.0, 70.0);
+        let dst_shape = (30, 40);
+
+        let plans = plan_tiles(
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            (5, 5),
+            1,
+            8,
+        )
+        .unwrap();
+
+        let total = plans.len();
+        let with_data = plans.iter().filter(|p| p.has_data).count();
+        let without_data = plans.iter().filter(|p| !p.has_data).count();
+
+        assert_eq!(total, with_data + without_data);
+        // The source (UTM 33N, ~500km east of central meridian, ~59-60°N) covers
+        // only a small portion of the destination — most tiles should have no data.
+        assert!(
+            without_data > with_data,
+            "Expected most tiles to be filtered out (without={without_data}, with={with_data})"
+        );
+        // All has_data=true tiles must have valid, non-empty src_slice within bounds
+        for plan in plans.iter().filter(|p| p.has_data) {
+            let (sr0, sr1, sc0, sc1) = plan.src_slice;
+            assert!(sr1 > sr0);
+            assert!(sc1 > sc0);
+            assert!(sr1 <= src_shape.0);
+            assert!(sc1 <= src_shape.1);
+        }
+    }
+
+    #[test]
+    fn test_plan_tiles_parallel_deterministic() {
+        // Calling plan_tiles twice with the same args must produce identical results.
+        // This verifies that Rayon's indexed collect preserves row-major order.
+        let src_transform = utm33_affine();
+        let src_shape = (128, 128);
+        let dst_transform = Affine::new(0.001, 0.0, 14.0, 0.0, -0.001, 60.0);
+        let dst_shape = (64, 64);
+
+        let plans_a = plan_tiles(
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            (16, 16),
+            1,
+            8,
+        )
+        .unwrap();
+
+        let plans_b = plan_tiles(
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            (16, 16),
+            1,
+            8,
+        )
+        .unwrap();
+
+        assert_eq!(plans_a.len(), plans_b.len());
+        for (a, b) in plans_a.iter().zip(plans_b.iter()) {
+            assert_eq!(a.dst_slice, b.dst_slice);
+            assert_eq!(a.src_slice, b.src_slice);
+            assert_eq!(a.has_data, b.has_data);
+            assert_eq!(a.dst_tile_shape, b.dst_tile_shape);
+        }
     }
 }
