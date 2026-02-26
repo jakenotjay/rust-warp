@@ -442,9 +442,8 @@ class TestDatasetAccessor:
 
         individual = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=1)
         batched = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=8)
-        assert (
-            _count_reproject_tasks(batched["var0"].data)
-            < _count_reproject_tasks(individual["var0"].data)
+        assert _count_reproject_tasks(batched["var0"].data) < _count_reproject_tasks(
+            individual["var0"].data
         )
 
     def test_dataset_mixed_dtype_groups_separately(self):
@@ -481,8 +480,8 @@ class TestDatasetAccessor:
         )
         ds_dask = ds.chunk({"y": 32, "x": 32})
         result = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=2)
-        assert "var0" in result          # pure-2D, took batched path
-        assert "nd_var" in result        # N-D, took nd_var_names path
+        assert "var0" in result  # pure-2D, took batched path
+        assert "nd_var" in result  # N-D, took nd_var_names path
         assert result["nd_var"].ndim == 3
         assert result["nd_var"].dims[0] == "time"
         # Values must be finite in the reprojected region

@@ -481,9 +481,7 @@ class WarpDatasetAccessor:
 
         # Separate spatial variables from pass-through variables
         spatial_vars = {
-            n: v
-            for n, v in self._ds.data_vars.items()
-            if y_dim in v.dims and x_dim in v.dims
+            n: v for n, v in self._ds.data_vars.items() if y_dim in v.dims and x_dim in v.dims
         }
         new_vars = {n: v for n, v in self._ds.data_vars.items() if n not in spatial_vars}
 
@@ -568,9 +566,7 @@ class WarpDatasetAccessor:
                 actual_batch = min(actual_batch, len(var_names))
 
                 # Stack variables into (n_vars, y, x) and rechunk batch dim
-                stacked = dask_array.stack(
-                    [spatial_vars[n].data for n in var_names], axis=0
-                )
+                stacked = dask_array.stack([spatial_vars[n].data for n in var_names], axis=0)
                 stacked = stacked.rechunk({0: actual_batch})
 
                 # One reproject_dask call covers all variables in this dtype group
@@ -602,9 +598,7 @@ class WarpDatasetAccessor:
                         }:
                             new_coords[cname] = coord
 
-                    attrs = {
-                        k: v for k, v in orig.attrs.items() if k not in ("crs", "transform")
-                    }
+                    attrs = {k: v for k, v in orig.attrs.items() if k not in ("crs", "transform")}
                     new_vars[vname] = xr.DataArray(
                         data=result_2d,
                         dims=[y_dim, x_dim],

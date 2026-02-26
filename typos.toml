@@ -4,6 +4,10 @@ crs = "crs"       # Coordinate Reference System
 wkt = "wkt"       # Well-Known Text
 epsg = "epsg"     # EPSG codes
 nodata = "nodata" # NoData value
+# Short variable names used throughout the codebase
+nd = "nd"         # abbreviation for "N-dimensional" and local nodata binding
+iy = "iy"         # integer y-index variable in resampling kernels
+fnd = "fnd"       # local variable for float no-data value
 
 [files]
 extend-exclude = ["*.lock", "uv.lock", "Cargo.lock"]

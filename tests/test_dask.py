@@ -313,9 +313,7 @@ class TestReprojectDask3d:
         """Each slice reprojected in a 3D batch must match standalone 2D reproject."""
         src_np = np.random.default_rng(1).random((4, 64, 64)).astype(np.float32)
         src_dask = da.from_array(src_np, chunks=(1, 32, 32)).rechunk({0: 4})
-        result_3d = reproject_dask(
-            src_dask, SRC_GEOBOX, DST_GEOBOX, resampling="nearest"
-        ).compute()
+        result_3d = reproject_dask(src_dask, SRC_GEOBOX, DST_GEOBOX, resampling="nearest").compute()
         for i in range(4):
             slice_dask = da.from_array(src_np[i], chunks=(32, 32))
             expected = reproject_dask(
