@@ -133,11 +133,7 @@ fn src_footprint_in_dst_pixels(
     // This avoids a spurious Some when the source projects to valid dst CRS coords
     // but those coords are far outside the actual destination image.
     let (dst_rows, dst_cols) = dst_shape;
-    if max_row < 0.0
-        || min_row > dst_rows as f64
-        || max_col < 0.0
-        || min_col > dst_cols as f64
-    {
+    if max_row < 0.0 || min_row > dst_rows as f64 || max_col < 0.0 || min_col > dst_cols as f64 {
         return None;
     }
 
@@ -873,22 +869,36 @@ mod tests {
         let shape = (64, 64);
 
         let seq = plan_tiles_sequential(
-            "EPSG:32633", &transform, shape,
-            "EPSG:32633", &transform, shape,
-            (16, 16), 1, 8,
-        ).unwrap();
+            "EPSG:32633",
+            &transform,
+            shape,
+            "EPSG:32633",
+            &transform,
+            shape,
+            (16, 16),
+            1,
+            8,
+        )
+        .unwrap();
 
         let par = plan_tiles(
-            "EPSG:32633", &transform, shape,
-            "EPSG:32633", &transform, shape,
-            (16, 16), 1, 8,
-        ).unwrap();
+            "EPSG:32633",
+            &transform,
+            shape,
+            "EPSG:32633",
+            &transform,
+            shape,
+            (16, 16),
+            1,
+            8,
+        )
+        .unwrap();
 
         assert_eq!(seq.len(), par.len());
         for (s, p) in seq.iter().zip(par.iter()) {
             assert_eq!(s.dst_slice, p.dst_slice);
             assert_eq!(s.src_slice, p.src_slice);
-            assert_eq!(s.has_data,  p.has_data);
+            assert_eq!(s.has_data, p.has_data);
             assert_eq!(s.dst_tile_shape, p.dst_tile_shape);
             assert_eq!(s.src_transform, p.src_transform);
         }
@@ -910,16 +920,30 @@ mod tests {
         let dst_shape = (30, 40);
 
         let seq = plan_tiles_sequential(
-            "EPSG:32633", &src_transform, src_shape,
-            "EPSG:4326",  &dst_transform, dst_shape,
-            (5, 5), 1, 8,
-        ).unwrap();
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            (5, 5),
+            1,
+            8,
+        )
+        .unwrap();
 
         let par = plan_tiles(
-            "EPSG:32633", &src_transform, src_shape,
-            "EPSG:4326",  &dst_transform, dst_shape,
-            (5, 5), 1, 8,
-        ).unwrap();
+            "EPSG:32633",
+            &src_transform,
+            src_shape,
+            "EPSG:4326",
+            &dst_transform,
+            dst_shape,
+            (5, 5),
+            1,
+            8,
+        )
+        .unwrap();
 
         assert_eq!(seq.len(), par.len());
 
@@ -941,7 +965,11 @@ mod tests {
             // says has_data=true the tile was not AABB-rejected and both paths used the
             // same projection, so results must be identical.)
             if p.has_data {
-                assert!(s.has_data, "sequential missed a tile parallel found: {:?}", p.dst_slice);
+                assert!(
+                    s.has_data,
+                    "sequential missed a tile parallel found: {:?}",
+                    p.dst_slice
+                );
                 assert_eq!(s.src_slice, p.src_slice);
                 assert_eq!(s.src_transform, p.src_transform);
             }

@@ -71,16 +71,18 @@ fn bench_warp_nearest(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_nearest_{size}x{size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Nearest,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Nearest,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -94,16 +96,18 @@ fn bench_warp_bilinear(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_bilinear_{size}x{size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Bilinear,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Bilinear,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -117,16 +121,18 @@ fn bench_warp_cubic(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_cubic_{size}x{size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Cubic,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Cubic,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -140,16 +146,18 @@ fn bench_warp_lanczos(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_lanczos_{size}x{size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Lanczos,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Lanczos,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -163,16 +171,18 @@ fn bench_warp_average(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_average_{src_size}to{dst_size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Average,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Average,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -187,16 +197,18 @@ fn bench_warp_scaling(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_scaling_bilinear_{size}x{size}"), |b| {
             b.iter(|| {
-                black_box(engine::warp(
-                    &src.view(),
-                    &src_affine,
-                    &dst_affine,
-                    dst_shape,
-                    &pipeline,
-                    ResamplingMethod::Bilinear,
-                    None,
+                black_box(
+                    engine::warp(
+                        &src.view(),
+                        &src_affine,
+                        &dst_affine,
+                        dst_shape,
+                        &pipeline,
+                        ResamplingMethod::Bilinear,
+                        None,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -321,36 +333,40 @@ fn bench_plan_tiles_sequential_vs_parallel(c: &mut Criterion) {
 
         c.bench_function(&format!("plan_tiles_sequential_{img}px_{tile}chunk"), |b| {
             b.iter(|| {
-                black_box(plan_tiles_sequential(
-                    "EPSG:32633",
-                    &src_aff,
-                    shape,
-                    "EPSG:32633",
-                    &dst_aff,
-                    shape,
-                    (tile, tile),
-                    1,
-                    // pts_per_edge: 21 matches the plan_reproject Python default (21 samples/edge)
-                    21,
+                black_box(
+                    plan_tiles_sequential(
+                        "EPSG:32633",
+                        &src_aff,
+                        shape,
+                        "EPSG:32633",
+                        &dst_aff,
+                        shape,
+                        (tile, tile),
+                        1,
+                        // pts_per_edge: 21 matches the plan_reproject Python default (21 samples/edge)
+                        21,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
 
         c.bench_function(&format!("plan_tiles_parallel_{img}px_{tile}chunk"), |b| {
             b.iter(|| {
-                black_box(plan_tiles(
-                    "EPSG:32633",
-                    &src_aff,
-                    shape,
-                    "EPSG:32633",
-                    &dst_aff,
-                    shape,
-                    (tile, tile),
-                    1,
-                    21,
+                black_box(
+                    plan_tiles(
+                        "EPSG:32633",
+                        &src_aff,
+                        shape,
+                        "EPSG:32633",
+                        &dst_aff,
+                        shape,
+                        (tile, tile),
+                        1,
+                        21,
+                    )
+                    .unwrap(),
                 )
-                .unwrap())
             });
         });
     }
@@ -367,35 +383,39 @@ fn bench_plan_tiles_sparse_vs_full(c: &mut Criterion) {
 
     c.bench_function("plan_tiles_full_512px_32chunk", |b| {
         b.iter(|| {
-            black_box(plan_tiles(
-                "EPSG:32633",
-                &aff,
-                dst_shape, // source covers destination exactly
-                "EPSG:32633",
-                &aff,
-                dst_shape,
-                tile,
-                1,
-                21,
+            black_box(
+                plan_tiles(
+                    "EPSG:32633",
+                    &aff,
+                    dst_shape, // source covers destination exactly
+                    "EPSG:32633",
+                    &aff,
+                    dst_shape,
+                    tile,
+                    1,
+                    21,
+                )
+                .unwrap(),
             )
-            .unwrap())
         });
     });
 
     c.bench_function("plan_tiles_sparse_32src_512dst_32chunk", |b| {
         b.iter(|| {
-            black_box(plan_tiles(
-                "EPSG:32633",
-                &aff,
-                (32, 32), // tiny source → only handful of tiles have data
-                "EPSG:32633",
-                &aff,
-                dst_shape,
-                tile,
-                1,
-                21,
+            black_box(
+                plan_tiles(
+                    "EPSG:32633",
+                    &aff,
+                    (32, 32), // tiny source → only handful of tiles have data
+                    "EPSG:32633",
+                    &aff,
+                    dst_shape,
+                    tile,
+                    1,
+                    21,
+                )
+                .unwrap(),
             )
-            .unwrap())
         });
     });
 }

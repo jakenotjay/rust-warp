@@ -319,13 +319,13 @@ def test_plan_reproject_sparse_overlap(benchmark):
         )
 
     # Guard: verify tile count and that the footprint pre-filter is active
-    # (source at ~15°E lies outside destination x-range 14°–14.512°E, so
+    # (source at ~15°E lies outside destination x-range 14°-14.512°E, so
     # all tiles should be fast-rejected with has_data=False).
     result = _plan()
     n_expected = (512 // 32) ** 2  # 256
     assert len(result) == n_expected, f"Expected {n_expected} tiles, got {len(result)}"
     assert not any(t["has_data"] for t in result), (
-        "Source (~15°E) is outside destination (14°–14.512°E): all tiles should be no-data"
+        "Source (~15°E) is outside destination (14°-14.512°E): all tiles should be no-data"
     )
 
     benchmark(_plan)

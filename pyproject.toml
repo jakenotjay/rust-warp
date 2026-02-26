@@ -3,7 +3,7 @@ name = "rust-warp"
 version = "0.1.0"
 description = "High-performance raster reprojection engine in Rust with xarray/dask integration"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 authors = [
     { name = "Jake Wilkins", email = "jake@epoch.blue" }
 ]

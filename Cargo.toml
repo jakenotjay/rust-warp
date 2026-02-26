@@ -5,7 +5,7 @@ edition = "2021"
 rust-version = "1.75"
 description = "High-performance raster reprojection engine with xarray/dask integration"
 repository = "https://github.com/jww/rust-warp"
-license = "MIT"
+license = "Apache-2.0"
 keywords = ["geospatial", "reprojection", "raster", "xarray", "gis"]
 categories = ["science::geo", "mathematics"]
 
