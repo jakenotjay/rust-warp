@@ -277,6 +277,64 @@ fn plan_single_tile(
     })
 }
 
+/// Sequential reference implementation of plan_tiles — no Rayon, no footprint pre-filter.
+///
+/// Used only in benchmarks to establish a before/after baseline against `plan_tiles`.
+#[doc(hidden)]
+#[allow(clippy::too_many_arguments)]
+pub fn plan_tiles_sequential(
+    src_crs: &str,
+    src_transform: &Affine,
+    src_shape: (usize, usize),
+    dst_crs: &str,
+    dst_transform: &Affine,
+    dst_shape: (usize, usize),
+    dst_tile_size: (usize, usize),
+    kernel_radius: usize,
+    pts_per_edge: usize,
+) -> Result<Vec<TilePlan>, PlanError> {
+    let (dst_rows, dst_cols) = dst_shape;
+    let (tile_h, tile_w) = dst_tile_size;
+
+    if tile_h == 0 || tile_w == 0 {
+        return Err(PlanError::General("Tile size must be > 0".into()));
+    }
+
+    let pipeline = Pipeline::new(src_crs, dst_crs)?;
+    let src_inv = src_transform
+        .inverse()
+        .map_err(|e| PlanError::General(e.to_string()))?;
+
+    let mut plans = Vec::new();
+    let mut row0 = 0;
+    while row0 < dst_rows {
+        let mut col0 = 0;
+        while col0 < dst_cols {
+            let plan = plan_single_tile(
+                row0,
+                col0,
+                tile_h,
+                tile_w,
+                dst_rows,
+                dst_cols,
+                &pipeline,
+                src_transform,
+                &src_inv,
+                dst_transform,
+                src_shape,
+                kernel_radius,
+                pts_per_edge,
+                None, // no footprint pre-filter
+            )?;
+            plans.push(plan);
+            col0 += tile_w;
+        }
+        row0 += tile_h;
+    }
+
+    Ok(plans)
+}
+
 /// Plan tile-level reprojection from source to destination grids.
 ///
 /// Divides the destination grid into tiles of `dst_tile_size` and for each tile,
@@ -804,6 +862,89 @@ mod tests {
             assert_eq!(a.src_slice, b.src_slice);
             assert_eq!(a.has_data, b.has_data);
             assert_eq!(a.dst_tile_shape, b.dst_tile_shape);
+        }
+    }
+
+    #[test]
+    fn test_sequential_and_parallel_agree() {
+        // Verify plan_tiles_sequential (benchmark baseline) and plan_tiles
+        // produce identical tile plans for the same arguments.
+        let transform = utm33_affine();
+        let shape = (64, 64);
+
+        let seq = plan_tiles_sequential(
+            "EPSG:32633", &transform, shape,
+            "EPSG:32633", &transform, shape,
+            (16, 16), 1, 8,
+        ).unwrap();
+
+        let par = plan_tiles(
+            "EPSG:32633", &transform, shape,
+            "EPSG:32633", &transform, shape,
+            (16, 16), 1, 8,
+        ).unwrap();
+
+        assert_eq!(seq.len(), par.len());
+        for (s, p) in seq.iter().zip(par.iter()) {
+            assert_eq!(s.dst_slice, p.dst_slice);
+            assert_eq!(s.src_slice, p.src_slice);
+            assert_eq!(s.has_data,  p.has_data);
+            assert_eq!(s.dst_tile_shape, p.dst_tile_shape);
+            assert_eq!(s.src_transform, p.src_transform);
+        }
+    }
+
+    #[test]
+    fn test_sequential_and_parallel_agree_cross_crs() {
+        // Cross-CRS case: UTM 33N source, WGS84 destination spanning a larger area.
+        // Most tiles are outside the source footprint AABB, so plan_tiles (parallel)
+        // fast-rejects them.  For tiles where parallel reports has_data=true, sequential
+        // must agree completely — both traversed the same projection code path.
+        // Tiles where parallel reports has_data=false may differ on src_slice vs sequential
+        // because the AABB is sampled and therefore approximate; that is accepted behaviour.
+        let src_transform = utm33_affine();
+        let src_shape = (64, 64);
+        // Destination: 30 rows x 40 cols at 1-degree resolution, 0°–40°E, 40°–70°N.
+        // Source (~15°E, ~59.5°N) falls within this extent but covers only a few tiles.
+        let dst_transform = Affine::new(1.0, 0.0, 0.0, 0.0, -1.0, 70.0);
+        let dst_shape = (30, 40);
+
+        let seq = plan_tiles_sequential(
+            "EPSG:32633", &src_transform, src_shape,
+            "EPSG:4326",  &dst_transform, dst_shape,
+            (5, 5), 1, 8,
+        ).unwrap();
+
+        let par = plan_tiles(
+            "EPSG:32633", &src_transform, src_shape,
+            "EPSG:4326",  &dst_transform, dst_shape,
+            (5, 5), 1, 8,
+        ).unwrap();
+
+        assert_eq!(seq.len(), par.len());
+
+        // Confirm the footprint filter is doing work.
+        let n_without_data = par.iter().filter(|p| !p.has_data).count();
+        assert!(
+            n_without_data > par.len() / 2,
+            "Expected most tiles to be filtered out (got {n_without_data}/{} without data)",
+            par.len(),
+        );
+
+        for (s, p) in seq.iter().zip(par.iter()) {
+            // dst geometry is index-based; both must always agree.
+            assert_eq!(s.dst_slice, p.dst_slice);
+            assert_eq!(s.dst_tile_shape, p.dst_tile_shape);
+
+            // For tiles where the parallel planner found data, sequential must agree fully.
+            // (The AABB prefilter is conservative on the has_data=true side: if parallel
+            // says has_data=true the tile was not AABB-rejected and both paths used the
+            // same projection, so results must be identical.)
+            if p.has_data {
+                assert!(s.has_data, "sequential missed a tile parallel found: {:?}", p.dst_slice);
+                assert_eq!(s.src_slice, p.src_slice);
+                assert_eq!(s.src_transform, p.src_transform);
+            }
         }
     }
 }

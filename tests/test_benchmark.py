@@ -281,7 +281,7 @@ def test_rasterio_average(benchmark, src_size, dst_size):
 
 
 @pytest.mark.benchmark(group="plan")
-@pytest.mark.parametrize("n_tiles", [4, 16, 64, 256])
+@pytest.mark.parametrize("n_tiles", [4, 16, 64, 256, 1024])
 def test_plan_reproject_overhead(benchmark, n_tiles):
     """Measure plan_reproject overhead at various tile counts."""
     import math
@@ -299,6 +299,34 @@ def test_plan_reproject_overhead(benchmark, n_tiles):
             dst_shape=(dst_size, dst_size),
             dst_chunks=(tile_size, tile_size),
         )
+
+    benchmark(_plan)
+
+
+@pytest.mark.benchmark(group="plan")
+def test_plan_reproject_sparse_overlap(benchmark):
+    """plan_reproject with sparse source coverage — footprint pre-filter active."""
+
+    def _plan():
+        return plan_reproject(
+            src_crs="EPSG:32633",
+            src_transform=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
+            src_shape=(64, 64),  # small source
+            dst_crs="EPSG:4326",
+            dst_transform=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+            dst_shape=(512, 512),  # large destination
+            dst_chunks=(32, 32),  # 256 tiles total
+        )
+
+    # Guard: verify tile count and that the footprint pre-filter is active
+    # (source at ~15°E lies outside destination x-range 14°–14.512°E, so
+    # all tiles should be fast-rejected with has_data=False).
+    result = _plan()
+    n_expected = (512 // 32) ** 2  # 256
+    assert len(result) == n_expected, f"Expected {n_expected} tiles, got {len(result)}"
+    assert not any(t["has_data"] for t in result), (
+        "Source (~15°E) is outside destination (14°–14.512°E): all tiles should be no-data"
+    )
 
     benchmark(_plan)
 

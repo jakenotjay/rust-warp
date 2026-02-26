@@ -1,7 +1,8 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ndarray::Array2;
 
 use _rust::affine::Affine;
+use _rust::chunk::planner::{plan_tiles, plan_tiles_sequential};
 use _rust::proj::approx::LinearApprox;
 use _rust::proj::crs::CrsTransform;
 use _rust::proj::pipeline::Pipeline;
@@ -70,7 +71,7 @@ fn bench_warp_nearest(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_nearest_{size}x{size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -79,7 +80,7 @@ fn bench_warp_nearest(c: &mut Criterion) {
                     ResamplingMethod::Nearest,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
@@ -93,7 +94,7 @@ fn bench_warp_bilinear(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_bilinear_{size}x{size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -102,7 +103,7 @@ fn bench_warp_bilinear(c: &mut Criterion) {
                     ResamplingMethod::Bilinear,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
@@ -116,7 +117,7 @@ fn bench_warp_cubic(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_cubic_{size}x{size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -125,7 +126,7 @@ fn bench_warp_cubic(c: &mut Criterion) {
                     ResamplingMethod::Cubic,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
@@ -139,7 +140,7 @@ fn bench_warp_lanczos(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_lanczos_{size}x{size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -148,7 +149,7 @@ fn bench_warp_lanczos(c: &mut Criterion) {
                     ResamplingMethod::Lanczos,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
@@ -162,7 +163,7 @@ fn bench_warp_average(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_average_{src_size}to{dst_size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -171,7 +172,7 @@ fn bench_warp_average(c: &mut Criterion) {
                     ResamplingMethod::Average,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
@@ -186,7 +187,7 @@ fn bench_warp_scaling(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_scaling_bilinear_{size}x{size}"), |b| {
             b.iter(|| {
-                engine::warp(
+                black_box(engine::warp(
                     &src.view(),
                     &src_affine,
                     &dst_affine,
@@ -195,14 +196,14 @@ fn bench_warp_scaling(c: &mut Criterion) {
                     ResamplingMethod::Bilinear,
                     None,
                 )
-                .unwrap()
+                .unwrap())
             });
         });
     }
 }
 
 fn bench_warp_thread_scaling(c: &mut Criterion) {
-    // Bilinear 1024×1024 with different thread counts
+    // Bilinear 1024x1024 with different thread counts
     let (src, src_affine, dst_affine, pipeline) = make_test_data(1024);
     let dst_shape = (1024, 1024);
 
@@ -214,7 +215,7 @@ fn bench_warp_thread_scaling(c: &mut Criterion) {
 
         c.bench_function(&format!("warp_threads_{threads}_bilinear_1024"), |b| {
             b.iter(|| {
-                pool.install(|| {
+                black_box(pool.install(|| {
                     engine::warp(
                         &src.view(),
                         &src_affine,
@@ -225,7 +226,7 @@ fn bench_warp_thread_scaling(c: &mut Criterion) {
                         None,
                     )
                     .unwrap()
-                })
+                }))
             });
         });
     }
@@ -309,6 +310,132 @@ fn bench_linear_approx_scanline(c: &mut Criterion) {
     }
 }
 
+fn bench_plan_tiles_sequential_vs_parallel(c: &mut Criterion) {
+    // Direct before/after: full-overlap UTM->UTM at growing grid sizes.
+    // Both "before" (sequential, no prefilter) and "after" (parallel + prefilter).
+    let src_aff = Affine::new(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0);
+    let dst_aff = src_aff;
+
+    for &(img, tile) in &[(256usize, 64usize), (512, 64), (1024, 64)] {
+        let shape = (img, img);
+
+        c.bench_function(&format!("plan_tiles_sequential_{img}px_{tile}chunk"), |b| {
+            b.iter(|| {
+                black_box(plan_tiles_sequential(
+                    "EPSG:32633",
+                    &src_aff,
+                    shape,
+                    "EPSG:32633",
+                    &dst_aff,
+                    shape,
+                    (tile, tile),
+                    1,
+                    // pts_per_edge: 21 matches the plan_reproject Python default (21 samples/edge)
+                    21,
+                )
+                .unwrap())
+            });
+        });
+
+        c.bench_function(&format!("plan_tiles_parallel_{img}px_{tile}chunk"), |b| {
+            b.iter(|| {
+                black_box(plan_tiles(
+                    "EPSG:32633",
+                    &src_aff,
+                    shape,
+                    "EPSG:32633",
+                    &dst_aff,
+                    shape,
+                    (tile, tile),
+                    1,
+                    21,
+                )
+                .unwrap())
+            });
+        });
+    }
+}
+
+fn bench_plan_tiles_sparse_vs_full(c: &mut Criterion) {
+    // Footprint pre-filter isolation: same 512px destination / 32px tiles (256 tiles).
+    // "Full" case: source covers the entire destination → all tiles have data.
+    // "Sparse" case: source is 32px, destination is 512px → only ~1 tile has data,
+    // the rest are fast-rejected by the footprint AABB.
+    let aff = Affine::new(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0);
+    let dst_shape = (512, 512);
+    let tile = (32, 32);
+
+    c.bench_function("plan_tiles_full_512px_32chunk", |b| {
+        b.iter(|| {
+            black_box(plan_tiles(
+                "EPSG:32633",
+                &aff,
+                dst_shape, // source covers destination exactly
+                "EPSG:32633",
+                &aff,
+                dst_shape,
+                tile,
+                1,
+                21,
+            )
+            .unwrap())
+        });
+    });
+
+    c.bench_function("plan_tiles_sparse_32src_512dst_32chunk", |b| {
+        b.iter(|| {
+            black_box(plan_tiles(
+                "EPSG:32633",
+                &aff,
+                (32, 32), // tiny source → only handful of tiles have data
+                "EPSG:32633",
+                &aff,
+                dst_shape,
+                tile,
+                1,
+                21,
+            )
+            .unwrap())
+        });
+    });
+}
+
+fn bench_plan_tiles_thread_scaling(c: &mut Criterion) {
+    // Rayon thread-scaling: 1024x1024px destination, 32px tiles (1024 tiles), UTM->UTM.
+    let aff = Affine::new(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0);
+    let shape = (1024, 1024);
+    let tile = (32, 32);
+
+    for &threads in &[1usize, 2, 4, 8] {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .build()
+            .unwrap();
+
+        c.bench_function(
+            &format!("plan_tiles_threads_{threads}_1024px_32chunk"),
+            |b| {
+                b.iter(|| {
+                    black_box(pool.install(|| {
+                        plan_tiles(
+                            "EPSG:32633",
+                            &aff,
+                            shape,
+                            "EPSG:32633",
+                            &aff,
+                            shape,
+                            tile,
+                            1,
+                            21,
+                        )
+                        .unwrap()
+                    }))
+                });
+            },
+        );
+    }
+}
+
 fn bench_crs_transform(c: &mut Criterion) {
     let ct = CrsTransform::new("EPSG:4326", "EPSG:32633").unwrap();
     let n = 1_000_000;
@@ -344,6 +471,9 @@ criterion_group!(
     bench_warp_thread_scaling,
     bench_projection_throughput,
     bench_linear_approx_scanline,
-    bench_crs_transform
+    bench_crs_transform,
+    bench_plan_tiles_sequential_vs_parallel,
+    bench_plan_tiles_sparse_vs_full,
+    bench_plan_tiles_thread_scaling
 );
 criterion_main!(benches);
