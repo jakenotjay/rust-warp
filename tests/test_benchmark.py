@@ -1,10 +1,13 @@
 """Performance benchmarks: rust-warp vs rasterio/GDAL."""
 
+import dask.array as _da
 import numpy as np
 import pytest
 import rasterio.warp
 from rasterio.crs import CRS
 from rust_warp import plan_reproject, reproject_array
+from rust_warp.dask_graph import reproject_dask as _reproject_dask
+from rust_warp.geobox import GeoBox as _GeoBox
 
 
 def _make_test_data(size):
@@ -353,3 +356,154 @@ def test_rasterio_multiband(benchmark, n_bands):
         return results
 
     benchmark(_reproject_all)
+
+
+# ---------------------------------------------------------------------------
+# Batched vs unbatched dask graph construction
+# ---------------------------------------------------------------------------
+
+_BATCH_SRC_GEOBOX = _GeoBox(
+    crs="EPSG:32633",
+    shape=(1024, 1024),
+    affine=(25.0, 0.0, 500000.0, 0.0, -25.0, 6600000.0),
+)
+_BATCH_DST_GEOBOX = _GeoBox(
+    crs="EPSG:4326",
+    shape=(1024, 1024),
+    affine=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+)
+_N_VARS = 16
+_DST_CHUNKS = (256, 256)
+
+
+@pytest.mark.benchmark(group="batch_reproject")
+def test_bench_graph_construction_unbatched(benchmark):
+    """Time to build 16 separate 2D reproject graphs (legacy per-variable path)."""
+    single = _da.zeros((1024, 1024), dtype=np.float32, chunks=(256, 256))
+
+    def build():
+        return [
+            _reproject_dask(
+                single,
+                _BATCH_SRC_GEOBOX,
+                _BATCH_DST_GEOBOX,
+                resampling="bilinear",
+                dst_chunks=_DST_CHUNKS,
+            )
+            for _ in range(_N_VARS)
+        ]
+
+    benchmark(build)
+
+
+@pytest.mark.benchmark(group="batch_reproject")
+def test_bench_graph_construction_batched(benchmark):
+    """Time to build one 3D reproject graph covering 16 variables."""
+    single = _da.zeros((1024, 1024), dtype=np.float32, chunks=(256, 256))
+    stacked = _da.stack([single] * _N_VARS, axis=0).rechunk({0: _N_VARS})
+
+    def build():
+        return _reproject_dask(
+            stacked,
+            _BATCH_SRC_GEOBOX,
+            _BATCH_DST_GEOBOX,
+            resampling="bilinear",
+            dst_chunks=_DST_CHUNKS,
+        )
+
+    benchmark(build)
+
+
+@pytest.mark.benchmark(group="batch_reproject")
+def test_bench_task_count_unbatched(benchmark):
+    """Record task count for 16 separate 2D reproject graphs."""
+    single = _da.zeros((1024, 1024), dtype=np.float32, chunks=(256, 256))
+
+    def count():
+        graphs = [
+            _reproject_dask(
+                single,
+                _BATCH_SRC_GEOBOX,
+                _BATCH_DST_GEOBOX,
+                resampling="bilinear",
+                dst_chunks=_DST_CHUNKS,
+            )
+            for _ in range(_N_VARS)
+        ]
+        return sum(len(g.__dask_graph__()) for g in graphs)
+
+    benchmark(count)
+
+
+@pytest.mark.benchmark(group="batch_reproject")
+def test_bench_task_count_batched(benchmark):
+    """Record task count for one 3D reproject graph covering 16 variables."""
+    single = _da.zeros((1024, 1024), dtype=np.float32, chunks=(256, 256))
+    stacked = _da.stack([single] * _N_VARS, axis=0).rechunk({0: _N_VARS})
+
+    def count():
+        result = _reproject_dask(
+            stacked,
+            _BATCH_SRC_GEOBOX,
+            _BATCH_DST_GEOBOX,
+            resampling="bilinear",
+            dst_chunks=_DST_CHUNKS,
+        )
+        return len(result.__dask_graph__())
+
+    benchmark(count)
+
+
+@pytest.mark.slow
+@pytest.mark.benchmark(group="batch_reproject_compute")
+def test_bench_compute_unbatched(benchmark):
+    """Compute 16 separate 2D reprojections (threaded scheduler).
+
+    Each variable uses a distinct source array so dask cannot fuse common
+    subgraph nodes across the 16 results, giving a fair worst-case comparison.
+    """
+    import dask
+
+    rng = np.random.default_rng(0)
+    # Distinct source arrays — prevents dask from deduplicating source tasks
+    # across the 16 reproject graphs when computed together.
+    src_arrays = [
+        _da.from_array(rng.random((1024, 1024)).astype(np.float32), chunks=(128, 128))
+        for _ in range(_N_VARS)
+    ]
+
+    def run():
+        results = [
+            _reproject_dask(
+                src,
+                _BATCH_SRC_GEOBOX,
+                _BATCH_DST_GEOBOX,
+                resampling="bilinear",
+                dst_chunks=(256, 256),
+            )
+            for src in src_arrays
+        ]
+        return dask.compute(*results, scheduler="threads")
+
+    benchmark(run)
+
+
+@pytest.mark.slow
+@pytest.mark.benchmark(group="batch_reproject_compute")
+def test_bench_compute_batched(benchmark):
+    """Compute 16-variable 3D reproject in one call (threaded scheduler)."""
+    src_np = np.random.default_rng(0).random((1024, 1024)).astype(np.float32)
+    single = _da.from_array(src_np, chunks=(128, 128))
+    stacked = _da.stack([single] * _N_VARS, axis=0).rechunk({0: _N_VARS})
+
+    def run():
+        result = _reproject_dask(
+            stacked,
+            _BATCH_SRC_GEOBOX,
+            _BATCH_DST_GEOBOX,
+            resampling="bilinear",
+            dst_chunks=(256, 256),
+        )
+        return result.compute(scheduler="threads")
+
+    benchmark(run)

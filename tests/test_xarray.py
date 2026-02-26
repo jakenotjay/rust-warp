@@ -25,6 +25,7 @@ SRC_CRS = "EPSG:32633"
 SRC_TRANSFORM = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0)
 SRC_SHAPE = (64, 64)
 SRC_GEOBOX = GeoBox(crs=SRC_CRS, shape=SRC_SHAPE, affine=SRC_TRANSFORM)
+DST_CRS = "EPSG:4326"
 
 
 def _make_dataarray(
@@ -86,6 +87,11 @@ def _make_dataset(geobox: GeoBox, n_vars: int = 2) -> xr.Dataset:
         "spatial_ref": _make_spatial_ref_coord(geobox.crs),
     }
     return xr.Dataset(ds_vars, coords=coords)
+
+
+def _count_reproject_tasks(da_arr) -> int:
+    """Count tasks in a dask graph whose key contains 'reproject'."""
+    return sum(1 for k in da_arr.__dask_graph__() if "reproject" in str(k))
 
 
 # ===========================================================================
@@ -298,6 +304,14 @@ class TestDataArrayAccessorMultiDim:
         assert "time" in result.coords
         np.testing.assert_array_equal(result.coords["time"].values, [0, 1, 2])
 
+    def test_batch_nd_dask_matches_unbatched(self):
+        """N-D dask DataArray batched matches per-slice result."""
+        pytest.importorskip("dask.array")
+        da_arr = _make_dataarray(SRC_GEOBOX, extra_dims={"band": 8}).chunk({"y": 32, "x": 32})
+        unbatched = da_arr.warp.reproject(DST_CRS, resampling="nearest", batch_size=1)
+        batched = da_arr.warp.reproject(DST_CRS, resampling="nearest", batch_size=8)
+        np.testing.assert_array_equal(unbatched.values, batched.values)
+
 
 # ===========================================================================
 # TestDataArrayAccessorDask
@@ -402,6 +416,79 @@ class TestDatasetAccessor:
     def test_crs_property(self):
         ds = _make_dataset(SRC_GEOBOX)
         assert ds.warp.crs == SRC_CRS
+
+    def test_dataset_batch_matches_individual(self):
+        """Batched dataset reproject produces the same values as per-variable."""
+        pytest.importorskip("dask.array")
+        ds = _make_dataset(SRC_GEOBOX, n_vars=8)
+        ds_dask = ds.chunk({"y": 32, "x": 32})
+
+        # batch_size=1 forces one variable per 3D task (equivalent to per-variable)
+        individual = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=1)
+        # batch_size=8 processes all 8 variables in one 3D task per spatial tile
+        batched = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=8)
+
+        for vname in ds.data_vars:
+            ind_vals = individual[vname].values
+            bat_vals = batched[vname].values
+            both_valid = ~np.isnan(ind_vals) & ~np.isnan(bat_vals)
+            np.testing.assert_array_equal(ind_vals[both_valid], bat_vals[both_valid])
+
+    def test_dataset_batch_task_count_reduced(self):
+        """Batched graph has far fewer reproject-layer tasks than unbatched."""
+        pytest.importorskip("dask.array")
+        ds = _make_dataset(SRC_GEOBOX, n_vars=8)
+        ds_dask = ds.chunk({"y": 32, "x": 32})
+
+        individual = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=1)
+        batched = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=8)
+        assert (
+            _count_reproject_tasks(batched["var0"].data)
+            < _count_reproject_tasks(individual["var0"].data)
+        )
+
+    def test_dataset_mixed_dtype_groups_separately(self):
+        """float64 and uint8 variables are processed separately without error."""
+        pytest.importorskip("dask.array")
+        ds = _make_dataset(SRC_GEOBOX, n_vars=2)
+        ds = ds.assign({"int_var": ds["var0"].astype(np.uint8)})
+        ds_dask = ds.chunk({"y": 32, "x": 32})
+        result = ds_dask.warp.reproject(DST_CRS, resampling="nearest")
+        assert "var0" in result
+        assert "int_var" in result
+
+    def test_max_task_bytes_limits_batch(self):
+        """Very small max_task_bytes derives batch_size=1 (same as unbatched)."""
+        pytest.importorskip("dask.array")
+        ds = _make_dataset(SRC_GEOBOX, n_vars=4)
+        ds_dask = ds.chunk({"y": 32, "x": 32})
+        # 32x32x8 bytes = 8192 bytes per chunk; max_task_bytes=1 -> batch_size=1
+        result = ds_dask.warp.reproject(
+            DST_CRS, resampling="nearest", batch_size=None, max_task_bytes=1
+        )
+        assert isinstance(result, xr.Dataset)
+        assert "var0" in result
+
+    def test_dataset_mixed_2d_and_nd_vars(self):
+        """Dataset with both pure-2D and N-D spatial vars is handled correctly."""
+        pytest.importorskip("dask.array")
+        ds = _make_dataset(SRC_GEOBOX, n_vars=2)  # var0, var1 — pure 2D
+        nd_data = np.random.default_rng(10).random((3, *SRC_SHAPE))
+        ds["nd_var"] = xr.DataArray(
+            nd_data,
+            dims=["time", "y", "x"],
+            coords={"time": [0, 1, 2], "y": ds.y, "x": ds.x},
+        )
+        ds_dask = ds.chunk({"y": 32, "x": 32})
+        result = ds_dask.warp.reproject(DST_CRS, resampling="nearest", batch_size=2)
+        assert "var0" in result          # pure-2D, took batched path
+        assert "nd_var" in result        # N-D, took nd_var_names path
+        assert result["nd_var"].ndim == 3
+        assert result["nd_var"].dims[0] == "time"
+        # Values must be finite in the reprojected region
+        nd_vals = result["nd_var"].values
+        assert nd_vals.shape == (3, result["nd_var"].sizes["y"], result["nd_var"].sizes["x"])
+        assert np.isfinite(nd_vals).any()
 
 
 # ===========================================================================

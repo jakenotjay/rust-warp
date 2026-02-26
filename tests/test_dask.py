@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from rust_warp import GeoBox, reproject, reproject_array
+from rust_warp.dask_graph import reproject_dask
 
 da = pytest.importorskip("dask.array")
 
@@ -14,6 +15,12 @@ SRC_CRS = "EPSG:32633"
 SRC_TRANSFORM = (100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0)
 SRC_SHAPE = (64, 64)
 SRC_GEOBOX = GeoBox(crs=SRC_CRS, shape=SRC_SHAPE, affine=SRC_TRANSFORM)
+
+DST_GEOBOX = GeoBox(
+    crs="EPSG:4326",
+    shape=(64, 64),
+    affine=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+)
 
 
 class TestGeoBox:
@@ -289,3 +296,68 @@ class TestReprojectNumpy:
 
         assert isinstance(result, np.ndarray)
         np.testing.assert_array_equal(result, expected)
+
+
+class TestReprojectDask3d:
+    """3D (n, y, x) reproject_dask support."""
+
+    def test_3d_returns_3d_dask_array(self):
+        src_np = np.random.default_rng(0).random((4, 64, 64)).astype(np.float32)
+        src_dask = da.from_array(src_np, chunks=(1, 32, 32)).rechunk({0: 4})
+        result = reproject_dask(src_dask, SRC_GEOBOX, SRC_GEOBOX, resampling="nearest")
+        assert isinstance(result, da.Array)
+        assert result.ndim == 3
+        assert result.shape == (4, 64, 64)
+
+    def test_3d_matches_per_slice_2d(self):
+        """Each slice reprojected in a 3D batch must match standalone 2D reproject."""
+        src_np = np.random.default_rng(1).random((4, 64, 64)).astype(np.float32)
+        src_dask = da.from_array(src_np, chunks=(1, 32, 32)).rechunk({0: 4})
+        result_3d = reproject_dask(
+            src_dask, SRC_GEOBOX, DST_GEOBOX, resampling="nearest"
+        ).compute()
+        for i in range(4):
+            slice_dask = da.from_array(src_np[i], chunks=(32, 32))
+            expected = reproject_dask(
+                slice_dask, SRC_GEOBOX, DST_GEOBOX, resampling="nearest"
+            ).compute()
+            np.testing.assert_array_equal(result_3d[i], expected)
+
+    def test_3d_multi_batch_chunking(self):
+        """n=8 with batch_size=4 produces two n-chunks in the output."""
+        src_np = np.random.default_rng(2).random((8, 64, 64)).astype(np.float32)
+        src_dask = da.from_array(src_np, chunks=(1, 32, 32)).rechunk({0: 4})
+        result = reproject_dask(src_dask, SRC_GEOBOX, SRC_GEOBOX, resampling="nearest")
+        assert result.chunks[0] == (4, 4)
+        assert result.shape == (8, 64, 64)
+
+    def test_derive_batch_size_clamps_nonpositive(self):
+        """batch_size <= 0 is clamped to 1."""
+        from rust_warp.dask_graph import _derive_batch_size
+
+        dtype = np.dtype("float32")
+        chunks = (32, 32)
+        assert _derive_batch_size(dtype, chunks, 0, 256 * 1024 * 1024) == 1
+        assert _derive_batch_size(dtype, chunks, -5, 256 * 1024 * 1024) == 1
+        assert _derive_batch_size(dtype, chunks, 1, 256 * 1024 * 1024) == 1
+        assert _derive_batch_size(dtype, chunks, 4, 256 * 1024 * 1024) == 4
+
+    def test_3d_no_data_tiles_filled(self):
+        """Tiles outside source extent are filled with NaN, not zero."""
+        src_np = np.ones((2, 16, 16), dtype=np.float32)
+        src_dask = da.from_array(src_np, chunks=(2, 16, 16))
+        src_geobox = GeoBox(
+            crs="EPSG:32633",
+            shape=(16, 16),
+            affine=(100.0, 0.0, 500000.0, 0.0, -100.0, 6600000.0),
+        )
+        dst_geobox = GeoBox(
+            crs="EPSG:4326",
+            shape=(64, 64),
+            affine=(0.001, 0.0, 14.0, 0.0, -0.001, 60.0),
+        )
+        result = reproject_dask(
+            src_dask, src_geobox, dst_geobox, resampling="nearest", dst_chunks=(32, 32)
+        ).compute()
+        assert result.shape == (2, 64, 64)
+        assert np.any(np.isnan(result))

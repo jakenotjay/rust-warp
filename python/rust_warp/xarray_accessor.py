@@ -115,6 +115,8 @@ def _reproject_dataarray(
     resampling: str = "bilinear",
     nodata: float | None = None,
     dst_chunks: tuple[int, int] | None = None,
+    batch_size: int | None = None,
+    max_task_bytes: int = 256 * 1024 * 1024,
 ) -> xr.DataArray:
     """Reproject a DataArray, handling both 2D and N-D cases."""
     y_dim, x_dim = _find_spatial_dims(da)
@@ -140,6 +142,8 @@ def _reproject_dataarray(
             resampling=resampling,
             nodata=nodata,
             dst_chunks=dst_chunks,
+            batch_size=batch_size,
+            max_task_bytes=max_task_bytes,
         )
 
     # Build new coordinates
@@ -184,6 +188,8 @@ def _reproject_nd(
     resampling: str = "bilinear",
     nodata: float | None = None,
     dst_chunks: tuple[int, int] | None = None,
+    batch_size: int | None = None,
+    max_task_bytes: int = 256 * 1024 * 1024,
 ):
     """Reproject an N-D array by iterating over non-spatial dimensions."""
     is_dask = hasattr(data, "dask")
@@ -204,28 +210,39 @@ def _reproject_nd(
     non_spatial = [i for i in range(ndim) if i not in (y_ax, x_ax)]
 
     if is_dask:
-        # For dask: reproject each 2D slice via map_blocks-style approach
-        # We move spatial axes to the end, reshape to (N, y, x), process, reshape back
-        slices = []
-        # Iterate over all combinations of non-spatial indices
+        from rust_warp.dask_graph import _derive_batch_size, reproject_dask
+
+        # Use dst_chunks if explicit; otherwise proxy with src chunk size (may
+        # underestimate tile bytes for cross-CRS warps with large scale changes).
+        sp_chunks = dst_chunks or (data.chunks[y_ax][0], data.chunks[x_ax][0])
+        actual_batch = _derive_batch_size(data.dtype, sp_chunks, batch_size, max_task_bytes)
+
+        # Collect selectors for all non-spatial slices
+        all_sels = []
         for idx in np.ndindex(*[data.shape[i] for i in non_spatial]):
             sel = [slice(None)] * ndim
             for ax, ix in zip(non_spatial, idx, strict=True):
                 sel[ax] = ix
-            slice_2d = data[tuple(sel)]
-            reprojected = reproject(
-                slice_2d,
-                src_geobox,
-                dst_geobox,
-                resampling=resampling,
-                nodata=nodata,
-                dst_chunks=dst_chunks,
-            )
-            slices.append(reprojected)
+            all_sels.append(tuple(sel))
 
-        # Stack slices back into N-D
-        result = dask_array.stack(slices).reshape(out_shape)
-        return result
+        slices_2d = [data[sel] for sel in all_sels]  # list of 2D dask arrays
+
+        # Stack → (n_slices, y, x); rechunk batch dimension
+        stacked = dask_array.stack(slices_2d, axis=0)
+        actual_batch = min(actual_batch, len(slices_2d))
+        stacked = stacked.rechunk({0: actual_batch})
+
+        # Single reproject_dask call on the 3D stack
+        reprojected_3d = reproject_dask(
+            stacked,
+            src_geobox,
+            dst_geobox,
+            resampling=resampling,
+            dst_chunks=dst_chunks,
+            nodata=nodata,
+        )
+        # reprojected_3d: (n_slices, dst_rows, dst_cols) → reshape to out_shape
+        return reprojected_3d.reshape(out_shape)
 
     # Numpy path
     out = np.empty(out_shape, dtype=data.dtype)
@@ -274,6 +291,8 @@ class WarpDataArrayAccessor:
         resampling: str = "bilinear",
         nodata: float | None = None,
         dst_chunks: tuple[int, int] | None = None,
+        batch_size: int | None = None,
+        max_task_bytes: int = 256 * 1024 * 1024,
     ) -> xr.DataArray:
         """Reproject to a new CRS.
 
@@ -287,6 +306,10 @@ class WarpDataArrayAccessor:
                 ``"cubic"``, ``"lanczos"``, ``"average"``).
             nodata: Nodata value. Defaults to NaN for floats.
             dst_chunks: Chunk size for dask output.
+            batch_size: Number of N-D slices to reproject per dask task.
+                If None, derived from *max_task_bytes*.
+            max_task_bytes: Maximum bytes per dask task when auto-computing
+                *batch_size* (default 256 MiB).
 
         Returns:
             Reprojected DataArray with updated coordinates and CRS.
@@ -300,6 +323,8 @@ class WarpDataArrayAccessor:
             resampling=resampling,
             nodata=nodata,
             dst_chunks=dst_chunks,
+            batch_size=batch_size,
+            max_task_bytes=max_task_bytes,
         )
 
     def reproject_match(
@@ -308,6 +333,8 @@ class WarpDataArrayAccessor:
         resampling: str = "bilinear",
         nodata: float | None = None,
         dst_chunks: tuple[int, int] | None = None,
+        batch_size: int | None = None,
+        max_task_bytes: int = 256 * 1024 * 1024,
     ) -> xr.DataArray:
         """Reproject to match another grid.
 
@@ -317,6 +344,8 @@ class WarpDataArrayAccessor:
             resampling: Resampling method.
             nodata: Nodata value.
             dst_chunks: Chunk size for dask output.
+            batch_size: Number of N-D slices to reproject per dask task.
+            max_task_bytes: Maximum bytes per dask task (default 256 MiB).
 
         Returns:
             Reprojected DataArray aligned to the target grid.
@@ -330,6 +359,8 @@ class WarpDataArrayAccessor:
             resampling=resampling,
             nodata=nodata,
             dst_chunks=dst_chunks,
+            batch_size=batch_size,
+            max_task_bytes=max_task_bytes,
         )
 
 
@@ -361,6 +392,8 @@ class WarpDatasetAccessor:
         resampling: str = "bilinear",
         nodata: float | None = None,
         dst_chunks: tuple[int, int] | None = None,
+        batch_size: int | None = None,
+        max_task_bytes: int = 256 * 1024 * 1024,
     ) -> xr.Dataset:
         """Reproject all spatial variables to a new CRS.
 
@@ -373,6 +406,11 @@ class WarpDatasetAccessor:
             resampling: Resampling method.
             nodata: Nodata value.
             dst_chunks: Chunk size for dask output.
+            batch_size: Number of same-dtype 2-D variables to reproject per
+                dask task. If None, derived from *max_task_bytes*. N-D
+                variables (e.g. with a time dimension) use *batch_size* as
+                the number of non-spatial slices per task instead.
+            max_task_bytes: Maximum bytes per dask task (default 256 MiB).
 
         Returns:
             Reprojected Dataset.
@@ -385,6 +423,8 @@ class WarpDatasetAccessor:
             resampling,
             nodata,
             dst_chunks,
+            batch_size,
+            max_task_bytes,
         )
 
     def reproject_match(
@@ -393,6 +433,8 @@ class WarpDatasetAccessor:
         resampling: str = "bilinear",
         nodata: float | None = None,
         dst_chunks: tuple[int, int] | None = None,
+        batch_size: int | None = None,
+        max_task_bytes: int = 256 * 1024 * 1024,
     ) -> xr.Dataset:
         """Reproject to match another grid.
 
@@ -402,6 +444,9 @@ class WarpDatasetAccessor:
             resampling: Resampling method.
             nodata: Nodata value.
             dst_chunks: Chunk size for dask output.
+            batch_size: Number of same-dtype 2-D variables to reproject per
+                dask task.
+            max_task_bytes: Maximum bytes per dask task (default 256 MiB).
 
         Returns:
             Reprojected Dataset aligned to the target grid.
@@ -414,6 +459,8 @@ class WarpDatasetAccessor:
             resampling,
             nodata,
             dst_chunks,
+            batch_size,
+            max_task_bytes,
         )
 
     def _reproject_with_geobox(
@@ -423,6 +470,8 @@ class WarpDatasetAccessor:
         resampling: str,
         nodata: float | None,
         dst_chunks: tuple[int, int] | None,
+        batch_size: int | None,
+        max_task_bytes: int,
     ) -> xr.Dataset:
         """Reproject all spatial variables using the given geoboxes."""
         try:
@@ -430,19 +479,139 @@ class WarpDatasetAccessor:
         except ValueError:
             raise ValueError("Cannot determine spatial dimensions in Dataset") from None
 
-        new_vars = {}
-        for name, var in self._ds.data_vars.items():
-            if y_dim in var.dims and x_dim in var.dims:
-                new_vars[name] = _reproject_dataarray(
+        # Separate spatial variables from pass-through variables
+        spatial_vars = {
+            n: v
+            for n, v in self._ds.data_vars.items()
+            if y_dim in v.dims and x_dim in v.dims
+        }
+        new_vars = {n: v for n, v in self._ds.data_vars.items() if n not in spatial_vars}
+
+        is_dask = any(hasattr(v.data, "dask") for v in spatial_vars.values())
+
+        if not is_dask:
+            # Numpy path: process each variable individually
+            for vname, var in spatial_vars.items():
+                new_vars[vname] = _reproject_dataarray(
                     var,
                     src_geobox,
                     dst_geobox,
                     resampling=resampling,
                     nodata=nodata,
                     dst_chunks=dst_chunks,
+                    batch_size=batch_size,
+                    max_task_bytes=max_task_bytes,
                 )
-            else:
-                new_vars[name] = var
+        else:
+            import dask.array as dask_array
+
+            from rust_warp.dask_graph import _derive_batch_size, reproject_dask
+
+            # Group pure-2D, same-dtype dask variables for batch processing.
+            # N-D variables are handled individually via _reproject_dataarray.
+            pure_2d_by_dtype: dict[np.dtype, list[str]] = {}
+            nd_var_names = []
+
+            for vname, var in spatial_vars.items():
+                non_sp = [d for d in var.dims if d not in (y_dim, x_dim)]
+                if not non_sp and hasattr(var.data, "dask"):
+                    pure_2d_by_dtype.setdefault(var.dtype, []).append(vname)
+                else:
+                    nd_var_names.append(vname)
+
+            # Process N-D variables individually (they use the improved _reproject_nd)
+            for vname in nd_var_names:
+                new_vars[vname] = _reproject_dataarray(
+                    spatial_vars[vname],
+                    src_geobox,
+                    dst_geobox,
+                    resampling=resampling,
+                    nodata=nodata,
+                    dst_chunks=dst_chunks,
+                    batch_size=batch_size,
+                    max_task_bytes=max_task_bytes,
+                )
+
+            # Process each dtype group as a single batched 3D reproject
+            for grp_dtype, var_names in pure_2d_by_dtype.items():
+                if len(var_names) == 1:
+                    # batch_size/max_task_bytes are unused for pure-2D variables
+                    # (they take the data.ndim==2 branch), but passed for consistency.
+                    new_vars[var_names[0]] = _reproject_dataarray(
+                        spatial_vars[var_names[0]],
+                        src_geobox,
+                        dst_geobox,
+                        resampling=resampling,
+                        nodata=nodata,
+                        dst_chunks=dst_chunks,
+                        batch_size=batch_size,
+                        max_task_bytes=max_task_bytes,
+                    )
+                    continue
+
+                # Use dst_chunks if explicit; otherwise proxy with src chunk size (may
+                # underestimate tile bytes for cross-CRS warps with large scale changes).
+                first_var = spatial_vars[var_names[0]]
+                y_pos = first_var.dims.index(y_dim)
+                x_pos = first_var.dims.index(x_dim)
+                if dst_chunks is not None:
+                    sp_chunks = dst_chunks
+                else:
+                    sp_chunks = (
+                        first_var.data.chunks[y_pos][0],
+                        first_var.data.chunks[x_pos][0],
+                    )
+
+                actual_batch = _derive_batch_size(
+                    np.dtype(grp_dtype), sp_chunks, batch_size, max_task_bytes
+                )
+                actual_batch = min(actual_batch, len(var_names))
+
+                # Stack variables into (n_vars, y, x) and rechunk batch dim
+                stacked = dask_array.stack(
+                    [spatial_vars[n].data for n in var_names], axis=0
+                )
+                stacked = stacked.rechunk({0: actual_batch})
+
+                # One reproject_dask call covers all variables in this dtype group
+                reprojected_3d = reproject_dask(
+                    stacked,
+                    src_geobox,
+                    dst_geobox,
+                    resampling=resampling,
+                    dst_chunks=dst_chunks,
+                    nodata=nodata,
+                )
+                # reprojected_3d: (n_vars, dst_rows, dst_cols)
+
+                dst_coords = dst_geobox.xr_coords()
+
+                for i, vname in enumerate(var_names):
+                    orig = spatial_vars[vname]
+                    result_2d = reprojected_3d[i]  # lazy 2D dask array
+
+                    new_coords: dict = {
+                        y_dim: (y_dim, dst_coords["y"]),
+                        x_dim: (x_dim, dst_coords["x"]),
+                        "spatial_ref": _make_spatial_ref_coord(dst_geobox.crs),
+                    }
+                    for cname, coord in orig.coords.items():
+                        if cname not in (y_dim, x_dim, "spatial_ref") and not set(coord.dims) & {
+                            y_dim,
+                            x_dim,
+                        }:
+                            new_coords[cname] = coord
+
+                    attrs = {
+                        k: v for k, v in orig.attrs.items() if k not in ("crs", "transform")
+                    }
+                    new_vars[vname] = xr.DataArray(
+                        data=result_2d,
+                        dims=[y_dim, x_dim],
+                        coords=new_coords,
+                        name=vname,
+                        attrs=attrs,
+                    )
 
         # Build the dataset from reprojected variables
         ds = xr.Dataset(new_vars)
