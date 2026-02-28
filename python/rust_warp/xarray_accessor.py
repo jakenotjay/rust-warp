@@ -243,6 +243,11 @@ def _reproject_nd(
             nodata=nodata,
         )
         # reprojected_3d: (n_slices, dst_rows, dst_cols) → reshape to out_shape
+        # cubed arrays don't have .reshape() method; use the array API function
+        if backend == "cubed":
+            import cubed.array_api as xp
+
+            return xp.reshape(reprojected_3d, out_shape)
         return reprojected_3d.reshape(out_shape)
 
     # Numpy path

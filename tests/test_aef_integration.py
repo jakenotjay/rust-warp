@@ -1,4 +1,7 @@
-"""Integration tests: reproject real AEF tiles via dask and cubed, compare results."""
+"""Integration tests: reproject real AEF tiles via dask and cubed, compare results.
+
+Uses a full 64-band AEF tile (64 x 8192 x 8192, int8, ~4GB) from Source Cooperative.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ from aef_loader import AEFIndex, DataSource, VirtualTiffReader  # noqa: E402
 
 SPATIAL_CHUNKS = {"time": 1, "band": 1, "y": 1024, "x": 1024}
 DST_CHUNKS = (512, 512)
+NODATA = -128  # AEF int8 nodata value
 
 
 @pytest.fixture(scope="module")
@@ -39,80 +43,95 @@ def aef_tile():
 
 
 @pytest.fixture(scope="module")
-def aef_2d_dask(aef_tile):
-    """Single 2D spatial slice as a dask-backed DataArray."""
+def aef_allbands_dask(aef_tile):
+    """All 64 bands (64 x 8192 x 8192) as a dask-backed DataArray."""
     ds = aef_tile.chunk(chunks=SPATIAL_CHUNKS)
     var_name = next(iter(ds.data_vars))
-    return ds[var_name].isel(time=0, band=0)
+    return ds[var_name].isel(time=0)
 
 
 @pytest.fixture(scope="module")
-def aef_2d_cubed(aef_tile):
-    """Single 2D spatial slice as a cubed-backed DataArray."""
+def aef_allbands_cubed(aef_tile):
+    """All 64 bands (64 x 8192 x 8192) as a cubed-backed DataArray."""
     ds = aef_tile.chunk(
         chunks=SPATIAL_CHUNKS,
         chunked_array_type="cubed",
         from_array_kwargs={"spec": cubed.Spec(allowed_mem="2GB")},
     )
     var_name = next(iter(ds.data_vars))
-    return ds[var_name].isel(time=0, band=0)
+    return ds[var_name].isel(time=0)
+
+
+def _assert_valid_reproject(result_np, nodata=NODATA):
+    """Sanity-check a reprojected int8 AEF result."""
+    assert result_np.shape[-2] > 0
+    assert result_np.shape[-1] > 0
+    # Must contain real data, not just nodata/zeros
+    valid = result_np[result_np != nodata]
+    assert valid.size > 0, "No valid (non-nodata) pixels in output"
+    assert valid.size > result_np.size * 0.5, (
+        f"Less than 50% valid pixels: {valid.size}/{result_np.size}"
+    )
 
 
 @pytest.mark.slow
 class TestAEFDask:
-    """Reproject a real AEF tile with dask."""
+    """Reproject all 64 bands of a real AEF tile with dask."""
 
-    def test_reproject_aef_tile_dask(self, aef_2d_dask):
-        assert hasattr(aef_2d_dask.data, "dask")
+    def test_reproject_aef_tile_dask(self, aef_allbands_dask):
+        assert hasattr(aef_allbands_dask.data, "dask")
+        assert aef_allbands_dask.shape == (64, 8192, 8192)
 
-        result = aef_2d_dask.warp.reproject("EPSG:4326", dst_chunks=DST_CHUNKS)
+        result = aef_allbands_dask.warp.reproject(
+            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest", nodata=NODATA
+        )
         result_np = result.values
 
-        assert result_np.ndim == 2
-        assert result_np.shape[0] > 0
-        assert result_np.shape[1] > 0
-        assert not np.all(np.isnan(result_np))
+        assert result_np.ndim == 3
+        assert result_np.shape[0] == 64
+        _assert_valid_reproject(result_np)
 
 
 @pytest.mark.slow
 class TestAEFCubed:
-    """Reproject a real AEF tile with cubed."""
+    """Reproject all 64 bands of a real AEF tile with cubed."""
 
-    def test_reproject_aef_tile_cubed(self, aef_2d_cubed):
-        assert isinstance(aef_2d_cubed.data, cubed.Array)
+    def test_reproject_aef_tile_cubed(self, aef_allbands_cubed):
+        assert isinstance(aef_allbands_cubed.data, cubed.Array)
+        assert aef_allbands_cubed.shape == (64, 8192, 8192)
 
-        result = aef_2d_cubed.warp.reproject("EPSG:4326", dst_chunks=DST_CHUNKS)
+        result = aef_allbands_cubed.warp.reproject(
+            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest", nodata=NODATA
+        )
         result_np = result.values
 
-        assert result_np.ndim == 2
-        assert result_np.shape[0] > 0
-        assert result_np.shape[1] > 0
-        assert not np.all(np.isnan(result_np))
+        assert result_np.ndim == 3
+        assert result_np.shape[0] == 64
+        _assert_valid_reproject(result_np)
 
 
 @pytest.mark.slow
 class TestAEFCrossBackend:
-    """Compare dask and cubed reprojection of the same real AEF tile."""
+    """Compare dask and cubed reprojection of all 64 bands of a real AEF tile."""
 
-    def test_dask_and_cubed_match(self, aef_2d_dask, aef_2d_cubed):
-        """Dask and cubed must produce identical output on real data."""
-        result_dask = aef_2d_dask.warp.reproject(
-            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest"
+    def test_dask_and_cubed_match(self, aef_allbands_dask, aef_allbands_cubed):
+        """Dask and cubed must produce pixel-identical output on real data."""
+        result_dask = aef_allbands_dask.warp.reproject(
+            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest", nodata=NODATA
         ).values
-        result_cubed = aef_2d_cubed.warp.reproject(
-            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest"
+        result_cubed = aef_allbands_cubed.warp.reproject(
+            "EPSG:4326", dst_chunks=DST_CHUNKS, resampling="nearest", nodata=NODATA
         ).values
 
         assert result_dask.shape == result_cubed.shape
+        assert result_dask.shape[0] == 64
 
-        dask_nan = np.isnan(result_dask)
-        cubed_nan = np.isnan(result_cubed)
-        np.testing.assert_array_equal(dask_nan, cubed_nan, err_msg="NaN pattern mismatch")
+        # For int8 data, nodata is -128 (not NaN). Compare all pixels directly.
+        np.testing.assert_array_equal(
+            result_dask,
+            result_cubed,
+            err_msg="Dask and cubed produced different pixel values",
+        )
 
-        both_valid = ~dask_nan & ~cubed_nan
-        if both_valid.any():
-            np.testing.assert_array_equal(
-                result_dask[both_valid],
-                result_cubed[both_valid],
-                err_msg="Pixel values differ between dask and cubed",
-            )
+        # Verify both results contain meaningful data
+        _assert_valid_reproject(result_dask)
