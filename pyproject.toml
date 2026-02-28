@@ -26,8 +26,15 @@ xarray = [
     "dask[array]>=2023.1",
     "pyproj>=3.4",
 ]
+cubed = [
+    "xarray>=2023.1",
+    "cubed>=0.20",
+    "cubed-xarray>=0.0.6",
+    "pyproj>=3.4",
+]
 all = [
     "rust-warp[xarray]",
+    "rust-warp[cubed]",
     "odc-geo>=0.4",
 ]
 dev = [
@@ -42,6 +49,7 @@ dev = [
     "matplotlib>=3.7",
     "obstore>=0.4",
     "zarr>=3.0",
+    "aef-loader",
 ]
 
 [build-system]
@@ -53,6 +61,9 @@ build-backend = "maturin"
 python-source = "python"
 module-name = "rust_warp._rust"
 features = ["pyo3/extension-module"]
+
+[tool.uv.sources]
+aef-loader = { git = "https://github.com/jakenotjay/aef-loader.git" }
 
 [tool.uv]
 # Rebuild when Rust sources change

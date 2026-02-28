@@ -12,6 +12,7 @@ from uuid import uuid4
 
 import numpy as np
 
+from rust_warp._backend import _compute_chunk_sizes, _derive_batch_size  # noqa: F401
 from rust_warp._rust import plan_reproject, reproject_array
 
 if TYPE_CHECKING:
@@ -113,32 +114,6 @@ def _reproject_from_blocks_3d(
             nodata=nodata,
         )
     return result
-
-
-def _derive_batch_size(
-    dtype: np.dtype,
-    dst_chunks: tuple[int, int],
-    batch_size: int | None,
-    max_task_bytes: int,
-) -> int:
-    """Return actual batch size: explicit if given, else derived from max_task_bytes.
-
-    *dst_chunks* is used as a proxy for output tile memory. Pass explicit *dst_chunks*
-    for accuracy when source and destination pixel sizes differ substantially.
-    """
-    if batch_size is not None:
-        return max(1, batch_size)
-    chunk_bytes = dst_chunks[0] * dst_chunks[1] * dtype.itemsize
-    return max(1, max_task_bytes // chunk_bytes)
-
-
-def _compute_chunk_sizes(total, chunk):
-    """Return chunk-sizes tuple for one dimension."""
-    n_full = total // chunk
-    remainder = total % chunk
-    if remainder:
-        return (chunk,) * n_full + (remainder,)
-    return (chunk,) * n_full
 
 
 def reproject_dask(

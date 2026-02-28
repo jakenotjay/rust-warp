@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import xarray as xr
 
+from rust_warp._backend import _derive_batch_size, detect_backend, stack_arrays
 from rust_warp._rust import transform_points
 from rust_warp.geobox import GeoBox, _extract_crs, _find_spatial_dims
 from rust_warp.reproject import reproject
@@ -192,10 +193,7 @@ def _reproject_nd(
     max_task_bytes: int = 256 * 1024 * 1024,
 ):
     """Reproject an N-D array by iterating over non-spatial dimensions."""
-    is_dask = hasattr(data, "dask")
-
-    if is_dask:
-        import dask.array as dask_array
+    backend = detect_backend(data)
 
     ndim = data.ndim
     y_ax, x_ax = spatial_axes
@@ -209,8 +207,11 @@ def _reproject_nd(
     # Non-spatial axis indices
     non_spatial = [i for i in range(ndim) if i not in (y_ax, x_ax)]
 
-    if is_dask:
-        from rust_warp.dask_graph import _derive_batch_size, reproject_dask
+    if backend is not None:
+        if backend == "dask":
+            from rust_warp.dask_graph import reproject_dask as reproject_chunked
+        else:
+            from rust_warp.cubed_graph import reproject_cubed as reproject_chunked
 
         # Use dst_chunks if explicit; otherwise proxy with src chunk size (may
         # underestimate tile bytes for cross-CRS warps with large scale changes).
@@ -225,15 +226,15 @@ def _reproject_nd(
                 sel[ax] = ix
             all_sels.append(tuple(sel))
 
-        slices_2d = [data[sel] for sel in all_sels]  # list of 2D dask arrays
+        slices_2d = [data[sel] for sel in all_sels]  # list of 2D chunked arrays
 
         # Stack → (n_slices, y, x); rechunk batch dimension
-        stacked = dask_array.stack(slices_2d, axis=0)
+        stacked = stack_arrays(slices_2d, axis=0, backend=backend)
         actual_batch = min(actual_batch, len(slices_2d))
         stacked = stacked.rechunk({0: actual_batch})
 
-        # Single reproject_dask call on the 3D stack
-        reprojected_3d = reproject_dask(
+        # Single chunked reproject call on the 3D stack
+        reprojected_3d = reproject_chunked(
             stacked,
             src_geobox,
             dst_geobox,
@@ -485,9 +486,12 @@ class WarpDatasetAccessor:
         }
         new_vars = {n: v for n, v in self._ds.data_vars.items() if n not in spatial_vars}
 
-        is_dask = any(hasattr(v.data, "dask") for v in spatial_vars.values())
+        # Detect chunked backend from spatial variables
+        backends = {detect_backend(v.data) for v in spatial_vars.values()}
+        backends.discard(None)
+        backend = backends.pop() if backends else None
 
-        if not is_dask:
+        if backend is None:
             # Numpy path: process each variable individually
             for vname, var in spatial_vars.items():
                 new_vars[vname] = _reproject_dataarray(
@@ -501,18 +505,19 @@ class WarpDatasetAccessor:
                     max_task_bytes=max_task_bytes,
                 )
         else:
-            import dask.array as dask_array
+            if backend == "dask":
+                from rust_warp.dask_graph import reproject_dask as reproject_chunked
+            else:
+                from rust_warp.cubed_graph import reproject_cubed as reproject_chunked
 
-            from rust_warp.dask_graph import _derive_batch_size, reproject_dask
-
-            # Group pure-2D, same-dtype dask variables for batch processing.
+            # Group pure-2D, same-dtype chunked variables for batch processing.
             # N-D variables are handled individually via _reproject_dataarray.
             pure_2d_by_dtype: dict[np.dtype, list[str]] = {}
             nd_var_names = []
 
             for vname, var in spatial_vars.items():
                 non_sp = [d for d in var.dims if d not in (y_dim, x_dim)]
-                if not non_sp and hasattr(var.data, "dask"):
+                if not non_sp and detect_backend(var.data) is not None:
                     pure_2d_by_dtype.setdefault(var.dtype, []).append(vname)
                 else:
                     nd_var_names.append(vname)
@@ -533,8 +538,6 @@ class WarpDatasetAccessor:
             # Process each dtype group as a single batched 3D reproject
             for grp_dtype, var_names in pure_2d_by_dtype.items():
                 if len(var_names) == 1:
-                    # batch_size/max_task_bytes are unused for pure-2D variables
-                    # (they take the data.ndim==2 branch), but passed for consistency.
                     new_vars[var_names[0]] = _reproject_dataarray(
                         spatial_vars[var_names[0]],
                         src_geobox,
@@ -547,8 +550,7 @@ class WarpDatasetAccessor:
                     )
                     continue
 
-                # Use dst_chunks if explicit; otherwise proxy with src chunk size (may
-                # underestimate tile bytes for cross-CRS warps with large scale changes).
+                # Use dst_chunks if explicit; otherwise proxy with src chunk size
                 first_var = spatial_vars[var_names[0]]
                 y_pos = first_var.dims.index(y_dim)
                 x_pos = first_var.dims.index(x_dim)
@@ -566,11 +568,13 @@ class WarpDatasetAccessor:
                 actual_batch = min(actual_batch, len(var_names))
 
                 # Stack variables into (n_vars, y, x) and rechunk batch dim
-                stacked = dask_array.stack([spatial_vars[n].data for n in var_names], axis=0)
+                stacked = stack_arrays(
+                    [spatial_vars[n].data for n in var_names], axis=0, backend=backend
+                )
                 stacked = stacked.rechunk({0: actual_batch})
 
-                # One reproject_dask call covers all variables in this dtype group
-                reprojected_3d = reproject_dask(
+                # One reproject call covers all variables in this dtype group
+                reprojected_3d = reproject_chunked(
                     stacked,
                     src_geobox,
                     dst_geobox,
@@ -578,13 +582,12 @@ class WarpDatasetAccessor:
                     dst_chunks=dst_chunks,
                     nodata=nodata,
                 )
-                # reprojected_3d: (n_vars, dst_rows, dst_cols)
 
                 dst_coords = dst_geobox.xr_coords()
 
                 for i, vname in enumerate(var_names):
                     orig = spatial_vars[vname]
-                    result_2d = reprojected_3d[i]  # lazy 2D dask array
+                    result_2d = reprojected_3d[i]  # lazy 2D chunked array
 
                     new_coords: dict = {
                         y_dim: (y_dim, dst_coords["y"]),
